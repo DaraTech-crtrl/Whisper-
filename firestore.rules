@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function existing() { return resource.data; }
+    function incoming() { return request.resource.data; }
+    function isSignedIn() { return request.auth != null; }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'username', 'publicKey'])
+        && data.uid == request.auth.uid
+        && data.uid is string && data.uid.size() <= 128
+        && data.username is string && data.username.size() <= 64 && data.username.size() >= 3
+        && data.publicKey is string && data.publicKey.size() <= 2048
+        && (
+          !('createdAt' in data) || (data.createdAt is timestamp)
+        )
+        && (
+          !('encryptedPrivateKey' in data) || (data.encryptedPrivateKey is string && data.encryptedPrivateKey.size() <= 4096)
+        )
+        && (
+          !('salt' in data) || (data.salt is string && data.salt.size() <= 256)
+        )
+        && (
+          !('updatedAt' in data) || (data.updatedAt is timestamp)
+        )
+        && (
+          !('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128)
+        )
+        && (
+          !('bio' in data) || (data.bio is string && data.bio.size() <= 500)
+        )
+        && (
+          !('messageExpiryHours' in data) || (data.messageExpiryHours is number)
+        )
+        && (
+          !('onboardingCompleted' in data) || (data.onboardingCompleted is bool)
+        )
+    }
+
+    match /users/{userId} {
+      // Anyone can read profiles to get the public key and send a message
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming());
+
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && incoming().uid == existing().uid;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['encryptedContent', 'read', 'isFlagged'])
+        && data.encryptedContent is string && data.encryptedContent.size() <= 800000
+        && (
+          !('createdAt' in data) || (data.createdAt is timestamp)
+        )
+        && (
+          !('receiverId' in data) || (data.receiverId is string && data.receiverId.size() <= 128)
+        )
+        && (
+          !('unlocksAt' in data) || (data.unlocksAt is timestamp)
+        )
+        && data.read is bool
+        && data.isFlagged is bool
+        && (
+          !('reaction' in data) || (data.reaction is string && data.reaction.size() <= 16)
+        )
+        && (
+          !('senderId' in data) || (data.senderId is string && data.senderId.size() <= 128)
+        )
+        && (
+          !('rating' in data) || (data.rating is number)
+        )
+        && (
+          !('mood' in data) || (data.mood is string && data.mood.size() <= 16)
+        )
+    }
+
+    match /users/{userId}/messages/{messageId} {
+      // Only the receiver can read their messages
+      allow read: if isSignedIn() && request.auth.uid == userId;
+
+      // Anyone (even anonymous) can send a message
+      allow create: if isValidId(userId)
+        && isValidId(messageId)
+        && exists(/databases/$(database)/documents/users/$(userId))
+        && isValidMessage(incoming())
+        && incoming().read == false
+        && incoming().isFlagged == false;
+
+      // Receiver can mark as read, flagged, or delete
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && incoming().diff(existing()).affectedKeys().hasAny(['read', 'isFlagged', 'reaction', 'rating']);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /anonymousUsers/{anonId} {
+      allow read: if true;
+      allow create: if isValidId(anonId)
+        && incoming().keys().hasOnly(['reputation'])
+        && incoming().reputation is number;
+      allow update: if isSignedIn()
+        && incoming().diff(existing()).affectedKeys().hasOnly(['reputation'])
+        && incoming().reputation is number;
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasAll(['messageId', 'reporterId', 'reason', 'createdAt'])
+        && data.messageId is string && data.messageId.size() <= 128
+        && data.reporterId is string && data.reporterId.size() <= 128
+        && data.reason is string && data.reason.size() <= 2048
+        && data.createdAt is timestamp
+        && data.reporterId == request.auth.uid
+    }
+
+    match /reports/{reportId} {
+      // Users can only read their own reports
+      allow read: if isSignedIn() && resource.data.reporterId == request.auth.uid;
+      
+      // Any signed-in user can create a report
+      allow create: if isSignedIn()
+        && isValidId(reportId)
+        && isValidReport(incoming())
+        && incoming().createdAt == request.time;
+    }
+  }
+}

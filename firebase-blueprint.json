@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with E2EE keys",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "bio": { "type": "string" },
+        "messageExpiryHours": { "type": "number" },
+        "onboardingCompleted": { "type": "boolean" },
+        "publicKey": { "type": "string" },
+        "encryptedPrivateKey": { "type": "string" },
+        "salt": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["uid", "username", "publicKey", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "An encrypted anonymous message",
+      "type": "object",
+      "properties": {
+        "receiverId": { "type": "string" },
+        "encryptedContent": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "read": { "type": "boolean" },
+        "isFlagged": { "type": "boolean" },
+        "reaction": { "type": "string" }
+      },
+      "required": ["receiverId", "encryptedContent", "createdAt", "read", "isFlagged"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "A user report for inappropriate messages or users",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string" },
+        "reporterId": { "type": "string" },
+        "reason": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["messageId", "reporterId", "reason", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores user profiles with their public key."
+    },
+    "users/{userId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Anonymous messages received by the user."
+    },
+    "reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "Reports of inappropriate messages."
+    }
+  }
+}

@@ -33,3 +33,4 @@ jobs:
           password: "-BX8P09dqv9tG)"
           server-dir: "whisper/"
           local-dir: "dist/"
+          exclude: '[ "**/.git*/**", "**/.git*", "android-chrome-192x192.png", "android-chrome-512x512.png", "apple-touch-icon.png", "favicon-16x16.png", "favicon-32x32.png", "favicon.ico", "site.webmanifest", "og-image.jpg", "og-image.png" ]'

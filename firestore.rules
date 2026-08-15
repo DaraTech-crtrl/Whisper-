@@ -52,6 +52,9 @@ service cloud.firestore {
         && (
           !('onboardingCompleted' in data) || (data.onboardingCompleted is bool)
         )
+        && (
+          !('isLocked' in data) || (data.isLocked is bool)
+        )
     }
 
     match /users/{userId} {
@@ -62,9 +65,8 @@ service cloud.firestore {
         && request.auth.uid == userId
         && isValidUserProfile(incoming());
 
-      allow update: if isSignedIn()
-        && request.auth.uid == userId
-        && incoming().uid == existing().uid;
+      allow update: if (isSignedIn() && request.auth.uid == userId && incoming().uid == existing().uid)
+        || (incoming().diff(existing()).affectedKeys().hasAny(['isLocked', 'updatedAt']) && (!('isLocked' in incoming()) || incoming().isLocked is bool));
     }
 
     function isValidMessage(data) {

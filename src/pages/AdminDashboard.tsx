@@ -7,12 +7,12 @@ import {
   EyeOff, 
   Users, 
   Server, 
-  Settings, 
+  Sliders, 
   Activity, 
   Search, 
   RefreshCw, 
   Download, 
-  CheckCircle, 
+  CheckCircle2, 
   AlertTriangle, 
   Key, 
   LogOut, 
@@ -20,33 +20,34 @@ import {
   Copy, 
   Check, 
   Database, 
-  Sliders, 
   Bell, 
   Shield, 
-  ChevronRight,
-  ExternalLink,
-  Cpu,
-  HardDrive,
-  Clock,
-  Sparkles,
-  Zap,
-  Info,
-  Layers,
-  BarChart3,
-  Globe,
-  Radio,
-  FileText,
-  UserX,
-  UserCheck,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Menu,
-  X,
-  Wrench,
-  ShieldAlert,
-  ArrowUpRight,
-  Terminal,
-  Filter
+  ChevronRight, 
+  ExternalLink, 
+  Cpu, 
+  Clock, 
+  Sparkles, 
+  Zap, 
+  Info, 
+  BarChart3, 
+  Globe, 
+  Radio, 
+  UserX, 
+  UserCheck, 
+  PanelLeftClose, 
+  PanelLeftOpen, 
+  Menu, 
+  X, 
+  Wrench, 
+  ShieldAlert, 
+  ArrowUpRight, 
+  Filter,
+  CheckCircle,
+  AlertCircle,
+  MoreVertical,
+  Mail,
+  Sun,
+  Moon
 } from "lucide-react";
 import { 
   collection, 
@@ -97,6 +98,13 @@ export interface AuditLog {
   type: "info" | "warning" | "success" | "danger";
 }
 
+export interface ToastNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: "success" | "danger" | "info" | "warning";
+}
+
 export default function AdminDashboard() {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -106,6 +114,9 @@ export default function AdminDashboard() {
   const [showPasskey, setShowPasskey] = useState(false);
   const [passkeyError, setPasskeyError] = useState("");
   const [isVerifyingPasskey, setIsVerifyingPasskey] = useState(false);
+
+  // Theme Mode State
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Layout Sidebar State
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -121,6 +132,7 @@ export default function AdminDashboard() {
   const [userFilter, setUserFilter] = useState<"all" | "onboarded" | "locked" | "hasEmail">("all");
   const [selectedUser, setSelectedUser] = useState<UserProfileData | null>(null);
   const [copiedUid, setCopiedUid] = useState<string | null>(null);
+  const [actionUserUid, setActionUserUid] = useState<string | null>(null);
 
   // System Settings State
   const [settings, setSettings] = useState<SystemSettingsData>({
@@ -134,15 +146,13 @@ export default function AdminDashboard() {
   });
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [settingsSaveSuccess, setSettingsSaveSuccess] = useState(false);
 
-  // System Updates State
+  // Toast Notifications
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
+  // System Version & Health
   const [currentVersion] = useState("v2.4.2");
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
-  const [updateStatus, setUpdateStatus] = useState<"latest" | "available" | "error" | null>("latest");
-  const [lastCheckTime, setLastCheckTime] = useState<string | null>(null);
-
-  // Database / System Health
   const [dbLatency, setDbLatency] = useState<number | null>(null);
   const [isTestingLatency, setIsTestingLatency] = useState(false);
 
@@ -151,11 +161,19 @@ export default function AdminDashboard() {
     {
       id: "1",
       timestamp: new Date().toLocaleTimeString(),
-      action: "Admin Access Granted",
-      details: "Authenticated via passkey session",
+      action: "Admin Session Authenticated",
+      details: "Passkey verification successful",
       type: "success"
     }
   ]);
+
+  const showToast = (title: string, message: string, type: ToastNotification["type"] = "success") => {
+    const newToast: ToastNotification = { id: Date.now().toString(), title, message, type };
+    setToasts(prev => [newToast, ...prev]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== newToast.id));
+    }, 4000);
+  };
 
   const addLog = (action: string, details: string, type: AuditLog["type"] = "info") => {
     const newLog: AuditLog = {
@@ -179,12 +197,14 @@ export default function AdminDashboard() {
         sessionStorage.setItem(SESSION_STORAGE_KEY, "true");
         setIsAuthenticated(true);
         addLog("Passkey Verified", "Granted access to Whisper Admin Command Center", "success");
+        showToast("Access Granted", "Welcome to the Whisper Admin Console", "success");
       } else {
         setPasskeyError("Invalid security passkey. Access denied.");
         addLog("Failed Authentication", "Attempted admin login with incorrect passkey", "danger");
+        showToast("Authentication Failed", "Incorrect security passkey provided", "danger");
       }
       setIsVerifyingPasskey(false);
-    }, 400);
+    }, 300);
   };
 
   const handleLogout = () => {
@@ -208,10 +228,11 @@ export default function AdminDashboard() {
         return tB - tA;
       });
       setUsersList(list);
-      addLog("Users Directory Loaded", `Retrieved ${list.length} user record(s) from Firestore`, "info");
+      addLog("Users Directory Sync", `Retrieved ${list.length} user record(s)`, "info");
     } catch (err: any) {
       console.error("Failed to fetch users:", err);
       addLog("Fetch Users Failure", err?.message || "Error reading users collection", "danger");
+      showToast("Sync Error", "Could not fetch user directory from Firestore", "danger");
     } finally {
       setIsLoadingUsers(false);
     }
@@ -236,7 +257,7 @@ export default function AdminDashboard() {
         });
       }
     } catch (err) {
-      console.warn("Using default settings:", err);
+      console.warn("Using default system settings:", err);
     } finally {
       setIsLoadingSettings(false);
     }
@@ -246,7 +267,6 @@ export default function AdminDashboard() {
   const handleSaveSettings = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSavingSettings(true);
-    setSettingsSaveSuccess(false);
 
     try {
       const docRef = doc(db, "systemSettings", "global");
@@ -255,39 +275,52 @@ export default function AdminDashboard() {
         lastUpdated: serverTimestamp(),
       }, { merge: true });
 
-      setSettingsSaveSuccess(true);
-      addLog("Settings Saved", "Global system parameters synchronized in Firestore", "success");
-      setTimeout(() => setSettingsSaveSuccess(false), 3000);
+      addLog("Settings Saved", "System configuration updated in Firestore", "success");
+      showToast("Settings Updated", "Global system parameters synchronized successfully", "success");
     } catch (err: any) {
       console.error("Error saving settings:", err);
       addLog("Save Settings Error", err?.message || "Could not write systemSettings document", "danger");
+      showToast("Save Failed", err?.message || "Failed to update system settings", "danger");
     } finally {
       setIsSavingSettings(false);
     }
   };
 
-  // Toggle Lock User
+  // Toggle Lock / Suspend User
   const handleToggleLockUser = async (userToLock: UserProfileData) => {
+    setActionUserUid(userToLock.uid);
     const newStatus = !userToLock.isLocked;
+
     try {
       await updateDoc(doc(db, "users", userToLock.uid), {
         isLocked: newStatus,
         updatedAt: serverTimestamp()
       });
 
+      // Optimistic update local state
       setUsersList(prev => prev.map(u => u.uid === userToLock.uid ? { ...u, isLocked: newStatus } : u));
       if (selectedUser && selectedUser.uid === userToLock.uid) {
         setSelectedUser(prev => prev ? { ...prev, isLocked: newStatus } : null);
       }
 
+      const actionText = newStatus ? "suspended" : "reactivated";
+      showToast(
+        newStatus ? "Account Suspended" : "Account Reactivated",
+        `User @${userToLock.username || userToLock.uid} has been ${actionText}.`,
+        newStatus ? "warning" : "success"
+      );
+
       addLog(
-        newStatus ? "Account Locked" : "Account Unlocked",
-        `Target: @${userToLock.username} (${userToLock.uid})`,
+        newStatus ? "Account Suspended" : "Account Reactivated",
+        `User: @${userToLock.username || "unnamed"} (${userToLock.uid})`,
         newStatus ? "warning" : "success"
       );
     } catch (err: any) {
-      console.error("Error locking user:", err);
-      addLog("Lock User Error", err?.message || "Failed to update user lock status", "danger");
+      console.error("Error updating user lock status:", err);
+      showToast("Operation Failed", err?.message || "Failed to update account status in Firestore", "danger");
+      addLog("Lock User Error", err?.message || "Failed to toggle user lock state", "danger");
+    } finally {
+      setActionUserUid(null);
     }
   };
 
@@ -300,10 +333,8 @@ export default function AdminDashboard() {
       const end = performance.now();
       const duration = Math.round(end - start);
       setDbLatency(duration);
-      addLog("Database Ping Test", `Firestore roundtrip response: ${duration}ms`, "success");
     } catch (err: any) {
       setDbLatency(-1);
-      addLog("Database Ping Error", err?.message || "Failed health check query", "danger");
     } finally {
       setIsTestingLatency(false);
     }
@@ -312,20 +343,17 @@ export default function AdminDashboard() {
   // Check System Updates
   const handleCheckUpdates = () => {
     setIsCheckingUpdates(true);
-    setUpdateStatus(null);
-
     setTimeout(() => {
-      setUpdateStatus("latest");
-      setLastCheckTime(new Date().toLocaleTimeString());
       setIsCheckingUpdates(false);
-      addLog("System Update Check", "Verified against Whisper production build. Engine up to date.", "success");
-    }, 1200);
+      showToast("System Up to Date", `Whisper ${currentVersion} is running the latest production build.`, "info");
+      addLog("Update Check", "Build version verified against production release channel.", "info");
+    }, 800);
   };
 
-  // Export Users to CSV
+  // Export Users CSV
   const handleExportUsers = () => {
     if (usersList.length === 0) return;
-    const headers = ["UID", "Username", "Display Name", "Email", "Onboarding Completed", "Locked", "Created At"];
+    const headers = ["UID", "Username", "Display Name", "Email", "Onboarding Completed", "Locked / Suspended", "Created At"];
     const rows = usersList.map(u => [
       u.uid,
       u.username || "",
@@ -342,12 +370,12 @@ export default function AdminDashboard() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `whisper_users_export_${Date.now()}.csv`);
+    link.setAttribute("download", `whisper_users_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    addLog("CSV Export", `Exported ${usersList.length} user records`, "info");
+    showToast("Export Complete", `Exported ${usersList.length} user records to CSV`, "success");
   };
 
   // Copy helper
@@ -384,25 +412,27 @@ export default function AdminDashboard() {
     return true;
   });
 
-  // Calculate stats
+  // Stats
   const totalUsersCount = usersList.length;
   const onboardedCount = usersList.filter(u => u.onboardingCompleted).length;
   const usersWithEmailCount = usersList.filter(u => u.email).length;
   const lockedUsersCount = usersList.filter(u => u.isLocked).length;
 
-  // Render Gate: Passkey Authentication Prompt
+  // Passkey Login View (Light/Dark Clean Theme)
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white">
+      <div className={`min-h-screen flex items-center justify-center p-4 font-sans ${isDarkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"}`}>
         <motion.div 
-          initial={{ opacity: 0, scale: 0.95, y: 15 }}
+          initial={{ opacity: 0, scale: 0.96, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-2xl relative overflow-hidden space-y-6"
+          className={`w-full max-w-md p-8 rounded-3xl border shadow-2xl relative overflow-hidden space-y-6 ${
+            isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200/90"
+          }`}
         >
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600" />
-          
+
           <div className="text-center space-y-3">
-            <div className="w-16 h-16 bg-slate-950 border border-indigo-500/30 rounded-2xl flex items-center justify-center mx-auto p-2.5 shadow-xl shadow-indigo-500/10">
+            <div className="w-16 h-16 bg-indigo-50 dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/30 rounded-2xl flex items-center justify-center mx-auto p-3 shadow-lg shadow-indigo-500/10">
               <img 
                 src={getAssetUrl("android-chrome-192x192.png")} 
                 alt="Whisper" 
@@ -411,17 +441,17 @@ export default function AdminDashboard() {
               />
             </div>
             <div>
-              <span className="px-3 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-indigo-400 text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 mb-2">
-                <ShieldCheck className="w-3.5 h-3.5" /> Security Checkpoint
+              <span className="px-3 py-1 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 rounded-full text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 mb-2">
+                <ShieldCheck className="w-3.5 h-3.5" /> Security Gateway
               </span>
-              <h1 className="text-2xl font-black text-white tracking-tight">Whisper Admin Console</h1>
-              <p className="text-xs text-slate-400 mt-1">Authorized access route: <code className="text-indigo-400 font-mono">/admin/unknownofrun</code></p>
+              <h1 className="text-2xl font-black tracking-tight">Whisper Admin Console</h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Authorized access route: <code className="text-indigo-600 dark:text-indigo-400 font-mono">/admin/unknownofrun</code></p>
             </div>
           </div>
 
           <form onSubmit={handlePasskeySubmit} className="space-y-4 pt-2">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                 Passkey Credential
               </label>
               <div className="relative">
@@ -432,13 +462,15 @@ export default function AdminDashboard() {
                   placeholder="Enter security passkey..."
                   required
                   autoFocus
-                  className="w-full pl-10 pr-12 py-3.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all font-mono"
+                  className={`w-full pl-10 pr-12 py-3.5 border focus:border-indigo-600 rounded-2xl text-sm font-mono outline-none transition-all ${
+                    isDarkMode ? "bg-slate-950 border-slate-800 text-white placeholder-slate-600" : "bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400"
+                  }`}
                 />
-                <Key className="w-4 h-4 text-slate-500 absolute left-3.5 top-4" />
+                <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-4" />
                 <button
                   type="button"
                   onClick={() => setShowPasskey(!showPasskey)}
-                  className="absolute right-3.5 top-4 text-slate-500 hover:text-slate-300 transition-colors"
+                  className="absolute right-3.5 top-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                 >
                   {showPasskey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -446,63 +478,105 @@ export default function AdminDashboard() {
             </div>
 
             {passkeyError && (
-              <motion.div 
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 flex items-center gap-2"
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0" />
+              <div className="p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 rounded-xl text-xs text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{passkeyError}</span>
-              </motion.div>
+              </div>
             )}
 
             <button
               type="submit"
               disabled={isVerifyingPasskey}
-              className="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold rounded-xl text-sm shadow-xl shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+              className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-sm shadow-xl shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {isVerifyingPasskey ? (
                 <>
-                  <RefreshCw className="w-4 h-4 animate-spin" /> Verifying Credentials...
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Verifying Passkey...
                 </>
               ) : (
                 <>
-                  <Lock className="w-4 h-4" /> Unlock Admin Dashboard
+                  <Lock className="w-4 h-4" /> Access Admin Console
                 </>
               )}
             </button>
           </form>
 
-          <div className="pt-2 border-t border-slate-800/80 text-center text-[11px] text-slate-500">
-            Protected by Whisper Zero-Knowledge Architecture
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 text-center text-xs text-slate-400 flex items-center justify-between">
+            <span>Whisper Security Suite</span>
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
+            >
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
           </div>
         </motion.div>
       </div>
     );
   }
 
-  // Sidebar Items Definition
+  // Sidebar Items
   const navigationItems = [
     { id: "overview", label: "Dashboard Overview", icon: BarChart3, badge: null },
     { id: "users", label: "User Directory", icon: Users, badge: totalUsersCount },
-    { id: "settings", label: "System Controls", icon: Sliders, badge: settings.maintenanceMode ? "ALERT" : null },
+    { id: "settings", label: "System Controls", icon: Sliders, badge: settings.maintenanceMode ? "MAINT" : null },
     { id: "updates", label: "Platform & Builds", icon: Cpu, badge: currentVersion },
     { id: "security", label: "Audit & Event Logs", icon: Shield, badge: logs.length },
   ];
 
+  const mainContainerClasses = isDarkMode 
+    ? "bg-slate-950 text-slate-100" 
+    : "bg-slate-50/70 text-slate-900";
+
+  const cardClasses = isDarkMode 
+    ? "bg-slate-900 border-slate-800" 
+    : "bg-white border-slate-200/90 shadow-sm";
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-indigo-500 selection:text-white">
+    <div className={`min-h-screen flex font-sans selection:bg-indigo-600 selection:text-white ${mainContainerClasses}`}>
       
+      {/* FLOATING TOAST NOTIFICATIONS */}
+      <div className="fixed top-5 right-5 z-50 space-y-2 max-w-sm w-full pointer-events-none">
+        <AnimatePresence>
+          {toasts.map(toast => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, y: -20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 20, scale: 0.9 }}
+              className={`p-4 rounded-2xl border shadow-xl pointer-events-auto flex items-start gap-3 backdrop-blur-xl ${
+                toast.type === "success" 
+                  ? "bg-emerald-500/95 text-white border-emerald-400" 
+                  : toast.type === "warning"
+                  ? "bg-amber-500/95 text-white border-amber-400"
+                  : toast.type === "danger"
+                  ? "bg-rose-500/95 text-white border-rose-400"
+                  : "bg-indigo-600/95 text-white border-indigo-400"
+              }`}
+            >
+              {toast.type === "success" && <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />}
+              {toast.type === "warning" && <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />}
+              {toast.type === "danger" && <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />}
+              {toast.type === "info" && <Info className="w-5 h-5 shrink-0 mt-0.5" />}
+              <div className="flex-1">
+                <div className="font-bold text-xs">{toast.title}</div>
+                <div className="text-[11px] opacity-90 leading-tight mt-0.5">{toast.message}</div>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
       {/* DESKTOP SIDEBAR */}
       <aside 
-        className={`hidden md:flex flex-col bg-slate-900/90 border-r border-slate-800/90 backdrop-blur-2xl transition-all duration-300 z-30 relative shrink-0 ${
-          sidebarOpen ? "w-64" : "w-20"
-        }`}
+        className={`hidden md:flex flex-col border-r backdrop-blur-xl transition-all duration-300 z-30 relative shrink-0 ${
+          isDarkMode ? "bg-slate-900/90 border-slate-800" : "bg-white/90 border-slate-200/90"
+        } ${sidebarOpen ? "w-64" : "w-20"}`}
       >
-        {/* Sidebar Brand Header */}
-        <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
+        {/* Sidebar Header */}
+        <div className="p-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-9 h-9 bg-slate-950 rounded-xl border border-indigo-500/30 flex items-center justify-center p-1.5 shrink-0 shadow-md">
+            <div className="w-10 h-10 bg-indigo-50 dark:bg-slate-800 rounded-2xl border border-indigo-100 dark:border-indigo-500/30 flex items-center justify-center p-2 shrink-0 shadow-sm">
               <img 
                 src={getAssetUrl("android-chrome-192x192.png")} 
                 alt="Whisper" 
@@ -512,30 +586,29 @@ export default function AdminDashboard() {
             </div>
             {sidebarOpen && (
               <div className="truncate">
-                <div className="font-bold text-sm text-white tracking-tight leading-none">Whisper Admin</div>
-                <div className="text-[10px] text-indigo-400 font-mono mt-0.5">Control Center</div>
+                <div className="font-bold text-sm tracking-tight leading-none text-slate-900 dark:text-white">Whisper Admin</div>
+                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono mt-1 font-semibold">Console Control</div>
               </div>
             )}
           </div>
 
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg transition-colors"
-            title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-xl transition-colors"
           >
             {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
           </button>
         </div>
 
-        {/* Sidebar Maintenance Warning Banner */}
+        {/* Maintenance Banner */}
         {settings.maintenanceMode && sidebarOpen && (
-          <div className="mx-3 mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400 text-xs flex items-center gap-2">
+          <div className="mx-3 mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-600 dark:text-amber-400 text-xs flex items-center gap-2">
             <Wrench className="w-4 h-4 shrink-0 animate-pulse" />
-            <span className="font-semibold text-[11px]">Maintenance Mode Active</span>
+            <span className="font-bold text-[11px]">Maintenance Mode Active</span>
           </div>
         )}
 
-        {/* Navigation Items */}
+        {/* Navigation List */}
         <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
           {navigationItems.map((item) => {
             const Icon = item.icon;
@@ -544,22 +617,24 @@ export default function AdminDashboard() {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id as any)}
-                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-semibold transition-all relative group ${
+                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs font-semibold transition-all group ${
                   isActive
-                    ? "bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/20"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20"
+                    : isDarkMode 
+                    ? "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                 }`}
                 title={!sidebarOpen ? item.label : undefined}
               >
-                <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"}`} />
+                <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 group-hover:text-indigo-600"}`} />
                 {sidebarOpen && <span className="truncate flex-1 text-left">{item.label}</span>}
                 {sidebarOpen && item.badge !== null && (
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                     isActive 
                       ? "bg-white/20 text-white" 
-                      : item.badge === "ALERT" 
-                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                      : "bg-slate-800 text-slate-400 border border-slate-700"
+                      : item.badge === "MAINT" 
+                      ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                   }`}>
                     {item.badge}
                   </span>
@@ -569,24 +644,26 @@ export default function AdminDashboard() {
           })}
         </nav>
 
-        {/* Sidebar Footer User Card */}
-        <div className="p-3 border-t border-slate-800/80">
-          <div className={`p-2.5 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between ${!sidebarOpen ? "justify-center" : ""}`}>
+        {/* Sidebar User Footer */}
+        <div className="p-3 border-t border-slate-200/80 dark:border-slate-800">
+          <div className={`p-2.5 rounded-2xl border flex items-center justify-between ${
+            isDarkMode ? "bg-slate-950/80 border-slate-800" : "bg-slate-50 border-slate-200/80"
+          }`}>
             {sidebarOpen && (
               <div className="flex items-center gap-2.5 overflow-hidden">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white text-xs shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
                   A
                 </div>
                 <div className="truncate">
-                  <div className="text-xs font-bold text-white truncate">Administrator</div>
-                  <div className="text-[10px] text-slate-500 font-mono truncate">Akin$sola@2020</div>
+                  <div className="text-xs font-bold truncate text-slate-900 dark:text-white">Admin Session</div>
+                  <div className="text-[10px] text-slate-400 font-mono truncate">Akin$sola@2020</div>
                 </div>
               </div>
             )}
 
             <button
               onClick={handleLogout}
-              className="p-1.5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-500 rounded-xl transition-colors"
               title="Logout Session"
             >
               <LogOut className="w-4 h-4" />
@@ -595,7 +672,7 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
-      {/* MOBILE SIDEBAR DRAWER OVERLAY */}
+      {/* MOBILE DRAWER */}
       <AnimatePresence>
         {mobileSidebarOpen && (
           <>
@@ -604,23 +681,25 @@ export default function AdminDashboard() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setMobileSidebarOpen(false)}
-              className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40 md:hidden"
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 md:hidden"
             />
             <motion.aside
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed left-0 top-0 bottom-0 w-72 bg-slate-900 border-r border-slate-800 z-50 md:hidden flex flex-col"
+              className={`fixed left-0 top-0 bottom-0 w-72 border-r z-50 md:hidden flex flex-col ${
+                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+              }`}
             >
-              <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-950 rounded-lg p-1 border border-indigo-500/30">
+                  <div className="w-8 h-8 bg-indigo-50 dark:bg-slate-800 rounded-xl p-1 border border-indigo-200">
                     <img src={getAssetUrl("android-chrome-192x192.png")} alt="Whisper" className="w-full h-full object-contain" />
                   </div>
-                  <span className="font-bold text-sm text-white">Whisper Admin</span>
+                  <span className="font-bold text-sm">Whisper Admin</span>
                 </div>
-                <button onClick={() => setMobileSidebarOpen(false)} className="p-1 text-slate-400 hover:text-white">
+                <button onClick={() => setMobileSidebarOpen(false)} className="p-1 text-slate-400">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -636,8 +715,8 @@ export default function AdminDashboard() {
                         setActiveTab(item.id as any);
                         setMobileSidebarOpen(false);
                       }}
-                      className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-semibold ${
-                        isActive ? "bg-indigo-600 text-white" : "text-slate-400 hover:bg-slate-800"
+                      className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-semibold ${
+                        isActive ? "bg-indigo-600 text-white" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -645,7 +724,7 @@ export default function AdminDashboard() {
                         <span>{item.label}</span>
                       </div>
                       {item.badge !== null && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500">
                           {item.badge}
                         </span>
                       )}
@@ -654,12 +733,12 @@ export default function AdminDashboard() {
                 })}
               </nav>
 
-              <div className="p-3 border-t border-slate-800">
+              <div className="p-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   onClick={handleLogout}
-                  className="w-full py-2.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-xs font-semibold flex items-center justify-center gap-2"
+                  className="w-full py-2.5 bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 rounded-2xl text-xs font-semibold flex items-center justify-center gap-2"
                 >
-                  <LogOut className="w-4 h-4" /> Logout Session
+                  <LogOut className="w-4 h-4" /> Sign Out Session
                 </button>
               </div>
             </motion.aside>
@@ -670,195 +749,199 @@ export default function AdminDashboard() {
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         
-        {/* Top Header Navigation Bar */}
-        <header className="sticky top-0 z-20 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/90 px-4 sm:px-8 py-3.5 flex items-center justify-between">
+        {/* Top App Header */}
+        <header className={`sticky top-0 z-20 border-b px-4 sm:px-8 py-3.5 flex items-center justify-between backdrop-blur-xl ${
+          isDarkMode ? "bg-slate-900/80 border-slate-800" : "bg-white/80 border-slate-200/90 shadow-sm"
+        }`}>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="md:hidden p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl"
+              className="md:hidden p-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl"
             >
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Breadcrumb path */}
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-500 font-mono">Admin</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-              <span className="text-slate-200 font-bold capitalize">
+              <span className="text-slate-400 font-mono">Whisper</span>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
+              <span className="font-bold capitalize text-slate-900 dark:text-white">
                 {activeTab === "overview" && "Dashboard Overview"}
-                {activeTab === "users" && "User Directory"}
-                {activeTab === "settings" && "System Controls"}
+                {activeTab === "users" && "User Directory & Account Locks"}
+                {activeTab === "settings" && "System Controls & Maintenance"}
                 {activeTab === "updates" && "Platform & Builds"}
-                {activeTab === "security" && "Audit & Security"}
+                {activeTab === "security" && "Audit Logs & Security"}
               </span>
             </div>
           </div>
 
-          {/* Quick Header Status Controls */}
           <div className="flex items-center gap-3">
-            
             {/* DB Health Badge */}
             <button
               onClick={runLatencyTest}
               disabled={isTestingLatency}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl text-xs text-slate-300 transition-colors"
-              title="Click to re-test Firestore ping latency"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-600 dark:text-slate-300"
+              title="Click to ping Firestore"
             >
-              <Radio className={`w-3.5 h-3.5 ${isTestingLatency ? "animate-pulse text-indigo-400" : "text-emerald-400"}`} />
-              <span className="font-mono">
-                {dbLatency !== null ? (dbLatency >= 0 ? `${dbLatency}ms` : "Error") : "Testing..."}
-              </span>
+              <Radio className={`w-3.5 h-3.5 ${isTestingLatency ? "animate-pulse text-indigo-600" : "text-emerald-500"}`} />
+              <span>{dbLatency !== null ? (dbLatency >= 0 ? `${dbLatency}ms` : "Error") : "Ping..."}</span>
             </button>
 
-            {/* Maintenance Mode Quick Indicator */}
+            {/* Maintenance Mode Status Pill */}
             {settings.maintenanceMode ? (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold rounded-xl">
-                <Wrench className="w-3.5 h-3.5 animate-pulse" /> Maintenance ON
+              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs font-bold rounded-xl">
+                <Wrench className="w-3.5 h-3.5 animate-pulse" /> Maintenance
               </span>
             ) : (
-              <span className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold rounded-xl">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" /> System Live
+              <span className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-bold rounded-xl">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" /> System Live
               </span>
             )}
 
-            {/* Refresh Data Button */}
+            {/* Theme Toggle */}
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl transition-colors"
+              title="Toggle Light / Dark Mode"
+            >
+              {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+            </button>
+
+            {/* Refresh Data */}
             <button
               onClick={() => {
                 fetchUsers();
                 fetchSettings();
                 runLatencyTest();
+                showToast("Refreshed", "Dashboard data synchronized", "info");
               }}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-colors"
-              title="Refresh All Dashboard Data"
+              className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl transition-colors"
+              title="Refresh All Data"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoadingUsers ? "animate-spin text-indigo-400" : ""}`} />
+              <RefreshCw className={`w-4 h-4 ${isLoadingUsers ? "animate-spin text-indigo-600" : ""}`} />
             </button>
-
           </div>
         </header>
 
-        {/* Dynamic Page Tab Body */}
+        {/* Tab Body */}
         <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">
           
           {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
               
-              {/* KPI Cards */}
+              {/* Stat Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
-                <div className="bg-slate-900/70 border border-slate-800/90 rounded-2xl p-5 relative overflow-hidden shadow-lg">
-                  <div className="flex items-center justify-between text-slate-400 text-xs font-semibold mb-3">
-                    <span>Registered Users</span>
-                    <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
+                <div className={`p-5 rounded-3xl border ${cardClasses}`}>
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-3">
+                    <span>Total Registered Users</span>
+                    <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-100 dark:border-indigo-500/20">
                       <Users className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-white">{isLoadingUsers ? "..." : totalUsersCount}</div>
-                  <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
-                    <span className="text-emerald-400 font-bold">Live</span> Firestore collection records
+                  <div className="text-3xl font-black text-slate-900 dark:text-white">{isLoadingUsers ? "..." : totalUsersCount}</div>
+                  <div className="mt-2 text-xs text-slate-500 flex items-center gap-1">
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">Live</span> Firestore records
                   </div>
                 </div>
 
-                <div className="bg-slate-900/70 border border-slate-800/90 rounded-2xl p-5 relative overflow-hidden shadow-lg">
-                  <div className="flex items-center justify-between text-slate-400 text-xs font-semibold mb-3">
+                <div className={`p-5 rounded-3xl border ${cardClasses}`}>
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-3">
                     <span>Active Profile Setups</span>
-                    <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+                    <div className="w-9 h-9 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-500/20">
                       <UserCheck className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-white">{isLoadingUsers ? "..." : onboardedCount}</div>
-                  <div className="mt-2 text-[11px] text-slate-400">
-                    {totalUsersCount > 0 ? `${Math.round((onboardedCount / totalUsersCount) * 100)}% onboarding rate` : "0%"}
+                  <div className="text-3xl font-black text-slate-900 dark:text-white">{isLoadingUsers ? "..." : onboardedCount}</div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    {totalUsersCount > 0 ? `${Math.round((onboardedCount / totalUsersCount) * 100)}% onboarding completed` : "0%"}
                   </div>
                 </div>
 
-                <div className="bg-slate-900/70 border border-slate-800/90 rounded-2xl p-5 relative overflow-hidden shadow-lg">
-                  <div className="flex items-center justify-between text-slate-400 text-xs font-semibold mb-3">
-                    <span>Recovery Emails Linked</span>
-                    <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/20">
-                      <Globe className="w-4 h-4" />
+                <div className={`p-5 rounded-3xl border ${cardClasses}`}>
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-3">
+                    <span>Recovery Emails</span>
+                    <div className="w-9 h-9 rounded-2xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-100 dark:border-purple-500/20">
+                      <Mail className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-white">{isLoadingUsers ? "..." : usersWithEmailCount}</div>
-                  <div className="mt-2 text-[11px] text-slate-400">
-                    Accounts with email recovery addresses
+                  <div className="text-3xl font-black text-slate-900 dark:text-white">{isLoadingUsers ? "..." : usersWithEmailCount}</div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    Accounts with linked email
                   </div>
                 </div>
 
-                <div className="bg-slate-900/70 border border-slate-800/90 rounded-2xl p-5 relative overflow-hidden shadow-lg">
-                  <div className="flex items-center justify-between text-slate-400 text-xs font-semibold mb-3">
-                    <span>Locked Accounts</span>
-                    <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center border border-rose-500/20">
+                <div className={`p-5 rounded-3xl border ${cardClasses}`}>
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-3">
+                    <span>Suspended Accounts</span>
+                    <div className="w-9 h-9 rounded-2xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center border border-rose-100 dark:border-rose-500/20">
                       <UserX className="w-4 h-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-black text-white">{isLoadingUsers ? "..." : lockedUsersCount}</div>
-                  <div className="mt-2 text-[11px] text-rose-400 font-semibold">
-                    {lockedUsersCount > 0 ? "Restricted access active" : "Zero suspended accounts"}
+                  <div className="text-3xl font-black text-slate-900 dark:text-white">{isLoadingUsers ? "..." : lockedUsersCount}</div>
+                  <div className="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-400">
+                    {lockedUsersCount > 0 ? `${lockedUsersCount} locked by admin` : "Zero suspended accounts"}
                   </div>
                 </div>
 
               </div>
 
-              {/* Maintenance & Quick Action Grid */}
+              {/* Engine Status & Maintenance Quick Switch */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
-                {/* System Engine Health Card */}
-                <div className="lg:col-span-2 bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+                <div className={`lg:col-span-2 p-6 rounded-3xl border space-y-4 ${cardClasses}`}>
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
                     <div className="flex items-center gap-2.5">
-                      <Server className="w-5 h-5 text-indigo-400" />
-                      <h2 className="font-bold text-base text-white">Engine Architecture & Status</h2>
+                      <Server className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                      <h2 className="font-bold text-base text-slate-900 dark:text-white">Engine Health & Infrastructure</h2>
                     </div>
-                    <span className="px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold rounded-lg">
+                    <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 text-xs font-bold rounded-xl border border-indigo-200 dark:border-indigo-500/20">
                       Build {currentVersion}
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                    <div className="p-4 bg-slate-950/70 border border-slate-800/80 rounded-xl space-y-1">
-                      <span className="text-slate-400">Database Engine</span>
-                      <p className="font-mono font-bold text-emerald-400 text-sm">Firestore DB (default)</p>
-                      <p className="text-[10px] text-slate-500">Security rules active & deployed</p>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1">
+                      <span className="text-slate-500">Database Backend</span>
+                      <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">Firestore (default)</p>
+                      <p className="text-[10px] text-slate-400">Security rules deployed & verified</p>
                     </div>
 
-                    <div className="p-4 bg-slate-950/70 border border-slate-800/80 rounded-xl space-y-1">
-                      <span className="text-slate-400">Client Encryption</span>
-                      <p className="font-mono font-bold text-purple-400 text-sm">RSA-OAEP 2048 / AES-256</p>
-                      <p className="text-[10px] text-slate-500">Zero-knowledge client payload</p>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1">
+                      <span className="text-slate-500">End-to-End Encryption</span>
+                      <p className="font-mono font-bold text-purple-600 dark:text-purple-400 text-sm">RSA-OAEP 2048 / AES-256</p>
+                      <p className="text-[10px] text-slate-400">Zero-knowledge client payloads</p>
                     </div>
 
-                    <div className="p-4 bg-slate-950/70 border border-slate-800/80 rounded-xl space-y-1">
-                      <span className="text-slate-400">New Signups</span>
-                      <p className={`font-mono font-bold text-sm ${settings.allowRegistrations ? "text-emerald-400" : "text-amber-400"}`}>
-                        {settings.allowRegistrations ? "Enabled" : "Disabled"}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1">
+                      <span className="text-slate-500">New Registrations</span>
+                      <p className={`font-mono font-bold text-sm ${settings.allowRegistrations ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                        {settings.allowRegistrations ? "Allowed" : "Disabled"}
                       </p>
-                      <p className="text-[10px] text-slate-500">Controlled in System Controls</p>
+                      <p className="text-[10px] text-slate-400">Controlled in System Controls tab</p>
                     </div>
 
-                    <div className="p-4 bg-slate-950/70 border border-slate-800/80 rounded-xl space-y-1">
-                      <span className="text-slate-400">Passkey Authentication</span>
-                      <p className="font-mono font-bold text-indigo-400 text-sm">Session Storage Verified</p>
-                      <p className="text-[10px] text-slate-500">Single administrator access</p>
+                    <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-1 text-slate-100">
+                      <span className="text-slate-400">Admin Security</span>
+                      <p className="font-mono font-bold text-indigo-400 text-sm">Passkey Auth Active</p>
+                      <p className="text-[10px] text-slate-500">Session storage persistence</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Maintenance Mode Quick Switch */}
-                <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between space-y-4 shadow-xl">
+                <div className={`p-6 rounded-3xl border flex flex-col justify-between space-y-4 ${cardClasses}`}>
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <Sliders className="w-5 h-5 text-amber-400" />
-                      <h2 className="font-bold text-base text-white">Maintenance Switch</h2>
+                      <Wrench className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                      <h2 className="font-bold text-base text-slate-900 dark:text-white">Maintenance Switch</h2>
                     </div>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                      Toggle maintenance mode to redirect all non-admin users to the standalone Maintenance screen.
+                    <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                      Toggle maintenance mode to redirect all non-admin visitors to the dedicated Maintenance screen.
                     </p>
 
-                    <div className="p-4 bg-slate-950/90 border border-slate-800 rounded-xl space-y-3">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-200">Maintenance Mode</span>
+                        <span className="text-xs font-bold">Maintenance Mode</span>
                         <button
                           onClick={() => {
                             const updated = !settings.maintenanceMode;
@@ -866,7 +949,7 @@ export default function AdminDashboard() {
                             handleSaveSettings();
                           }}
                           className={`w-12 h-6 rounded-full p-1 transition-colors ${
-                            settings.maintenanceMode ? "bg-amber-500" : "bg-slate-800"
+                            settings.maintenanceMode ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-800"
                           }`}
                         >
                           <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
@@ -875,18 +958,18 @@ export default function AdminDashboard() {
                         </button>
                       </div>
 
-                      <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${settings.maintenanceMode ? "bg-amber-400 animate-ping" : "bg-emerald-400"}`} />
-                        <span>Status: {settings.maintenanceMode ? "Active Redirect On" : "Live Normal Access"}</span>
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${settings.maintenanceMode ? "bg-amber-500 animate-ping" : "bg-emerald-500"}`} />
+                        <span>Status: {settings.maintenanceMode ? "Redirect Active" : "Live Normal Browsing"}</span>
                       </div>
                     </div>
                   </div>
 
                   <button
                     onClick={handleExportUsers}
-                    className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 border border-slate-700 transition-all shadow-md"
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-600/20"
                   >
-                    <Download className="w-4 h-4" /> Export User Backup (CSV)
+                    <Download className="w-4 h-4" /> Export Users Backup (CSV)
                   </button>
                 </div>
 
@@ -895,39 +978,40 @@ export default function AdminDashboard() {
             </motion.div>
           )}
 
-          {/* TAB 2: USER DIRECTORY */}
+          {/* TAB 2: USER DIRECTORY & LOCKS */}
           {activeTab === "users" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
               
-              {/* Directory Filter & Search Header */}
-              <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+              {/* Search & Filter Header */}
+              <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-center justify-between gap-4 ${cardClasses}`}>
                 
                 <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                   <input
                     type="text"
                     value={userSearchQuery}
                     onChange={(e) => setUserSearchQuery(e.target.value)}
-                    placeholder="Search username, email, UID..."
-                    className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl text-xs text-white placeholder-slate-500 outline-none transition-all"
+                    placeholder="Search handle, email, UID..."
+                    className={`w-full pl-10 pr-4 py-2 border focus:border-indigo-600 rounded-2xl text-xs outline-none transition-all ${
+                      isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                    }`}
                   />
                 </div>
 
-                {/* Filter Chips */}
                 <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
                   {[
-                    { id: "all", label: "All Users" },
-                    { id: "onboarded", label: "Onboarded Only" },
-                    { id: "hasEmail", label: "Has Email" },
-                    { id: "locked", label: "Locked Accounts" },
+                    { id: "all", label: `All (${totalUsersCount})` },
+                    { id: "onboarded", label: `Onboarded (${onboardedCount})` },
+                    { id: "hasEmail", label: `Has Email (${usersWithEmailCount})` },
+                    { id: "locked", label: `Suspended (${lockedUsersCount})` },
                   ].map(filter => (
                     <button
                       key={filter.id}
                       onClick={() => setUserFilter(filter.id as any)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
                         userFilter === filter.id
                           ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                          : "bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800"
+                          : "bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
                       }`}
                     >
                       {filter.label}
@@ -938,45 +1022,45 @@ export default function AdminDashboard() {
               </div>
 
               {/* Users Table */}
-              <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+              <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
                 {isLoadingUsers ? (
                   <div className="p-12 text-center text-slate-400 space-y-3">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-400" />
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
                     <p className="text-xs">Fetching users from Firestore...</p>
                   </div>
                 ) : filteredUsers.length === 0 ? (
                   <div className="p-12 text-center text-slate-400 space-y-2">
-                    <Users className="w-8 h-8 mx-auto text-slate-600 mb-2" />
-                    <p className="text-sm font-bold text-slate-300">No matching user records found</p>
-                    <p className="text-xs text-slate-500">Try clearing or changing your search filters.</p>
+                    <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No matching user records found</p>
+                    <p className="text-xs text-slate-400">Try adjusting your search criteria.</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
-                        <tr className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold">
-                          <th className="p-4">User Profile</th>
-                          <th className="p-4">Email</th>
+                        <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 font-semibold">
+                          <th className="p-4">User Handle & Name</th>
+                          <th className="p-4">Email Address</th>
                           <th className="p-4">User ID (UID)</th>
                           <th className="p-4">Status</th>
                           <th className="p-4">Registered</th>
-                          <th className="p-4 text-right">Actions</th>
+                          <th className="p-4 text-right">Suspend / Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800/60">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                         {filteredUsers.map((user) => (
-                          <tr key={user.uid} className="hover:bg-slate-800/40 transition-colors">
+                          <tr key={user.uid} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                             
                             <td className="p-4">
                               <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center font-bold text-white shadow-md uppercase text-sm shrink-0">
+                                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center font-bold text-white uppercase text-sm shrink-0 shadow-sm">
                                   {user.username ? user.username.charAt(0) : "U"}
                                 </div>
                                 <div>
-                                  <div className="font-bold text-slate-100 flex items-center gap-1.5">
+                                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                                     <span>@{user.username || "unnamed"}</span>
                                     {user.isLocked && (
-                                      <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 text-[10px] rounded border border-rose-500/20 font-bold">
+                                      <span className="px-2 py-0.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[10px] rounded-full border border-rose-200 dark:border-rose-500/20 font-bold">
                                         Suspended
                                       </span>
                                     )}
@@ -986,31 +1070,35 @@ export default function AdminDashboard() {
                               </div>
                             </td>
 
-                            <td className="p-4 text-slate-300 font-mono text-[11px]">
-                              {user.email ? user.email : <span className="text-slate-600 italic">None</span>}
+                            <td className="p-4 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+                              {user.email ? user.email : <span className="text-slate-400 italic">None</span>}
                             </td>
 
-                            <td className="p-4 font-mono text-[11px] text-slate-400">
+                            <td className="p-4 font-mono text-[11px] text-slate-500">
                               <div className="flex items-center gap-1.5">
-                                <span className="truncate max-w-[120px]" title={user.uid}>{user.uid}</span>
+                                <span className="truncate max-w-[110px]" title={user.uid}>{user.uid}</span>
                                 <button
                                   onClick={() => handleCopy(user.uid, `uid-${user.uid}`)}
-                                  className="p-1 hover:bg-slate-800 rounded text-slate-500 hover:text-slate-300 transition-colors"
+                                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400"
                                   title="Copy UID"
                                 >
-                                  {copiedUid === `uid-${user.uid}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                  {copiedUid === `uid-${user.uid}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                                 </button>
                               </div>
                             </td>
 
                             <td className="p-4">
-                              {user.onboardingCompleted ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-semibold">
-                                  <CheckCircle className="w-3 h-3" /> Onboarded
+                              {user.isLocked ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20 rounded-full text-[10px] font-bold">
+                                  <Lock className="w-3 h-3" /> Locked
+                                </span>
+                              ) : user.onboardingCompleted ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-full text-[10px] font-bold">
+                                  <CheckCircle className="w-3 h-3" /> Active
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full text-[10px] font-semibold">
-                                  <Clock className="w-3 h-3" /> Setup Incomplete
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 rounded-full text-[10px] font-bold">
+                                  <Clock className="w-3 h-3" /> Pending Setup
                                 </span>
                               )}
                             </td>
@@ -1026,29 +1114,41 @@ export default function AdminDashboard() {
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   onClick={() => setSelectedUser(user)}
-                                  className="px-2.5 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1"
+                                  className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1"
                                 >
                                   <Info className="w-3.5 h-3.5" /> Inspect
                                 </button>
 
+                                {/* EXPLICIT SUSPEND / UNLOCK TOGGLE BUTTON WITH SPINNER */}
                                 <button
                                   onClick={() => handleToggleLockUser(user)}
-                                  className={`p-1.5 rounded-xl border transition-colors ${
+                                  disabled={actionUserUid === user.uid}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all shadow-sm active:scale-95 ${
                                     user.isLocked
-                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
-                                      : "bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
+                                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
+                                      : "bg-rose-600 hover:bg-rose-700 text-white border-rose-600"
                                   }`}
-                                  title={user.isLocked ? "Unlock User Account" : "Suspend User Account"}
+                                  title={user.isLocked ? "Unlock and Reactivate Account" : "Lock and Suspend Account"}
                                 >
-                                  {user.isLocked ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
+                                  {actionUserUid === user.uid ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : user.isLocked ? (
+                                    <>
+                                      <UserCheck className="w-3.5 h-3.5" /> Reactivate
+                                    </>
+                                  ) : (
+                                    <>
+                                      <UserX className="w-3.5 h-3.5" /> Suspend
+                                    </>
+                                  )}
                                 </button>
 
                                 {user.username && (
                                   <Link
                                     to={`/u/${user.username}`}
                                     target="_blank"
-                                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-colors"
-                                    title="View Public Profile Page"
+                                    className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition-colors"
+                                    title="View Public Profile"
                                   >
                                     <ExternalLink className="w-3.5 h-3.5" />
                                   </Link>
@@ -1073,138 +1173,154 @@ export default function AdminDashboard() {
               
               <form onSubmit={handleSaveSettings} className="space-y-6">
                 
-                {/* Broadcasts & Maintenance */}
-                <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-                  <div className="flex items-center gap-2.5 border-b border-slate-800/80 pb-4">
-                    <Bell className="w-5 h-5 text-amber-400" />
-                    <h2 className="font-bold text-base text-white">Maintenance Mode & Global Announcements</h2>
+                {/* Global Maintenance Mode */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${cardClasses}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Wrench className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                      <div>
+                        <h2 className="font-bold text-base text-slate-900 dark:text-white">Global Maintenance Redirect</h2>
+                        <p className="text-xs text-slate-500">Redirects all non-admin traffic to the standalone Maintenance screen.</p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSettings(s => ({ ...s, maintenanceMode: !s.maintenanceMode }))}
+                      className={`w-14 h-7 rounded-full p-1 transition-colors ${
+                        settings.maintenanceMode ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-800"
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                        settings.maintenanceMode ? "translate-x-7" : "translate-x-0"
+                      }`} />
+                    </button>
                   </div>
 
-                  <div className="space-y-4">
-                    
-                    <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
-                      <div>
-                        <h3 className="text-xs font-bold text-white">System Maintenance Mode</h3>
-                        <p className="text-[11px] text-slate-400">Redirects all app visitors to standalone Maintenance screen.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSettings(s => ({ ...s, maintenanceMode: !s.maintenanceMode }))}
-                        className={`w-12 h-6 rounded-full p-1 transition-colors ${
-                          settings.maintenanceMode ? "bg-amber-500" : "bg-slate-800"
-                        }`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                          settings.maintenanceMode ? "translate-x-6" : "translate-x-0"
-                        }`} />
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1">Maintenance Notice Message</label>
-                      <textarea
-                        value={settings.maintenanceMessage}
-                        onChange={(e) => setSettings(s => ({ ...s, maintenanceMessage: e.target.value }))}
-                        rows={2}
-                        className="w-full p-3 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl text-xs text-white outline-none transition-all"
-                      />
-                    </div>
-
-                    <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between">
-                      <div>
-                        <h3 className="text-xs font-bold text-white">Global Announcement Banner</h3>
-                        <p className="text-[11px] text-slate-400">Top banner notification across user dashboards.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSettings(s => ({ ...s, announcementActive: !s.announcementActive }))}
-                        className={`w-12 h-6 rounded-full p-1 transition-colors ${
-                          settings.announcementActive ? "bg-indigo-600" : "bg-slate-800"
-                        }`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                          settings.announcementActive ? "translate-x-6" : "translate-x-0"
-                        }`} />
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1">Announcement Banner Text</label>
-                      <input
-                        type="text"
-                        value={settings.announcementText}
-                        onChange={(e) => setSettings(s => ({ ...s, announcementText: e.target.value }))}
-                        className="w-full p-3 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl text-xs text-white outline-none transition-all"
-                      />
-                    </div>
-
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Maintenance Notice Message
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={settings.maintenanceMessage}
+                      onChange={(e) => setSettings(s => ({ ...s, maintenanceMessage: e.target.value }))}
+                      placeholder="Message shown to visitors when maintenance mode is active..."
+                      className={`w-full p-3.5 border focus:border-indigo-600 rounded-2xl text-xs outline-none transition-all ${
+                        isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                      }`}
+                    />
                   </div>
                 </div>
 
-                {/* Security Limits */}
-                <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-                  <div className="flex items-center gap-2.5 border-b border-slate-800/80 pb-4">
-                    <Shield className="w-5 h-5 text-purple-400" />
-                    <h2 className="font-bold text-base text-white">Access & Operational Limits</h2>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    
-                    <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between col-span-1 sm:col-span-2">
+                {/* Announcement Banner */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${cardClasses}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Bell className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                       <div>
-                        <h3 className="text-xs font-bold text-white">Allow New User Registrations</h3>
-                        <p className="text-[11px] text-slate-400">Control if new visitors can create account profiles.</p>
+                        <h2 className="font-bold text-base text-slate-900 dark:text-white">Global Announcement Banner</h2>
+                        <p className="text-xs text-slate-500">Broadcasts a notification banner across the top header for all users.</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setSettings(s => ({ ...s, allowRegistrations: !s.allowRegistrations }))}
-                        className={`w-12 h-6 rounded-full p-1 transition-colors ${
-                          settings.allowRegistrations ? "bg-emerald-500" : "bg-slate-800"
-                        }`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                          settings.allowRegistrations ? "translate-x-6" : "translate-x-0"
-                        }`} />
-                      </button>
                     </div>
 
+                    <button
+                      type="button"
+                      onClick={() => setSettings(s => ({ ...s, announcementActive: !s.announcementActive }))}
+                      className={`w-14 h-7 rounded-full p-1 transition-colors ${
+                        settings.announcementActive ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-800"
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                        settings.announcementActive ? "translate-x-7" : "translate-x-0"
+                      }`} />
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Announcement Banner Text
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.announcementText}
+                      onChange={(e) => setSettings(s => ({ ...s, announcementText: e.target.value }))}
+                      placeholder="e.g. Welcome to Whisper! E2E encryption is active."
+                      className={`w-full px-4 py-3 border focus:border-indigo-600 rounded-2xl text-xs outline-none transition-all ${
+                        isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Sign-ups & Limits */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${cardClasses}`}>
+                  <h2 className="font-bold text-base text-slate-900 dark:text-white mb-2">Registration & Message Limits</h2>
+
+                  <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1">Max Message Payload (Chars)</label>
+                      <div className="font-bold text-xs text-slate-900 dark:text-white">Allow New User Sign-ups</div>
+                      <div className="text-[11px] text-slate-500">Enable or disable new user account creation.</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSettings(s => ({ ...s, allowRegistrations: !s.allowRegistrations }))}
+                      className={`w-12 h-6 rounded-full p-1 transition-colors ${
+                        settings.allowRegistrations ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-800"
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                        settings.allowRegistrations ? "translate-x-6" : "translate-x-0"
+                      }`} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Max Message Character Limit
+                      </label>
                       <input
                         type="number"
                         value={settings.maxMessageLength}
                         onChange={(e) => setSettings(s => ({ ...s, maxMessageLength: parseInt(e.target.value) || 800000 }))}
-                        className="w-full p-3 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl text-xs text-white outline-none transition-all"
+                        className={`w-full px-4 py-3 border focus:border-indigo-600 rounded-2xl text-xs outline-none font-mono ${
+                          isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                        }`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1">Default Message Expiry (Hours)</label>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Default Message Expiry (Hours)
+                      </label>
                       <input
                         type="number"
                         value={settings.defaultExpiryHours}
                         onChange={(e) => setSettings(s => ({ ...s, defaultExpiryHours: parseInt(e.target.value) || 24 }))}
-                        className="w-full p-3 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl text-xs text-white outline-none transition-all"
+                        className={`w-full px-4 py-3 border focus:border-indigo-600 rounded-2xl text-xs outline-none font-mono ${
+                          isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                        }`}
                       />
                     </div>
-
                   </div>
                 </div>
 
-                {/* Save Bar */}
-                <div className="flex items-center justify-between pt-2">
-                  {settingsSaveSuccess && (
-                    <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="text-xs text-emerald-400 font-medium flex items-center gap-1.5">
-                      <CheckCircle className="w-4 h-4" /> System settings persisted to Firestore!
-                    </motion.div>
-                  )}
+                <div className="flex justify-end">
                   <button
                     type="submit"
                     disabled={isSavingSettings}
-                    className="ml-auto px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold rounded-xl text-xs shadow-xl shadow-indigo-600/20 flex items-center gap-2 transition-all"
+                    className="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-xs shadow-lg shadow-indigo-600/25 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
                   >
-                    {isSavingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                    <span>Save System Settings</span>
+                    {isSavingSettings ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" /> Saving Settings...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" /> Synchronize System Controls
+                      </>
+                    )}
                   </button>
                 </div>
 
@@ -1213,81 +1329,94 @@ export default function AdminDashboard() {
             </motion.div>
           )}
 
-          {/* TAB 4: PLATFORM UPDATES */}
+          {/* TAB 4: PLATFORM & BUILDS */}
           {activeTab === "updates" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
               
-              <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-                  <div>
-                    <h2 className="font-bold text-base text-white">Whisper Build & Release Status</h2>
-                    <p className="text-xs text-slate-400">Core system release versioning & build diagnostics.</p>
+              <div className={`p-6 rounded-3xl border space-y-6 ${cardClasses}`}>
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-100 dark:border-indigo-500/20">
+                      <Cpu className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="font-bold text-base text-slate-900 dark:text-white">Whisper Build Version</h2>
+                      <p className="text-xs text-slate-500">Production compilation and channel updates.</p>
+                    </div>
                   </div>
+
+                  <span className="px-3 py-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-full text-xs font-bold font-mono">
+                    {currentVersion}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Release Channel Information</h3>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Current Release Tag:</span>
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{currentVersion}-prod</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Environment:</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">Cloud Run / Vite React 18</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Key Manager:</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">Client RSA-OAEP Key Pairs</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
                   <button
                     onClick={handleCheckUpdates}
                     disabled={isCheckingUpdates}
-                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-xs flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20"
+                    className="px-5 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-2xl text-xs flex items-center gap-2 transition-colors"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdates ? "animate-spin" : ""}`} />
-                    <span>Check for Platform Updates</span>
+                    <RefreshCw className={`w-4 h-4 ${isCheckingUpdates ? "animate-spin text-indigo-600" : ""}`} />
+                    <span>{isCheckingUpdates ? "Verifying Builds..." : "Check Release Channel"}</span>
                   </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                  <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
-                    <span className="text-slate-400">Current Release Tag</span>
-                    <p className="font-mono font-black text-white text-lg">{currentVersion}</p>
-                    <p className="text-[10px] text-emerald-400 font-semibold">Latest Build Active</p>
-                  </div>
-
-                  <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
-                    <span className="text-slate-400">Update Status</span>
-                    <p className="font-mono font-bold text-emerald-400 text-base">Up To Date</p>
-                    <p className="text-[10px] text-slate-500">Last verified: {lastCheckTime || "Just now"}</p>
-                  </div>
-
-                  <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
-                    <span className="text-slate-400">Engine Channel</span>
-                    <p className="font-mono font-bold text-indigo-400 text-base">Production Main</p>
-                    <p className="text-[10px] text-slate-500">Cloud Run Sandboxed Container</p>
-                  </div>
                 </div>
               </div>
 
             </motion.div>
           )}
 
-          {/* TAB 5: AUDIT & SECURITY LOGS */}
+          {/* TAB 5: AUDIT LOGS */}
           {activeTab === "security" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
               
-              <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-                <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+              <div className={`p-6 rounded-3xl border space-y-4 ${cardClasses}`}>
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
                   <div className="flex items-center gap-2.5">
-                    <Terminal className="w-5 h-5 text-indigo-400" />
-                    <h2 className="font-bold text-base text-white">System Audit Timeline</h2>
+                    <Shield className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <h2 className="font-bold text-base text-slate-900 dark:text-white">Administrative Audit Event Log</h2>
                   </div>
-                  <span className="text-xs text-slate-500 font-mono">{logs.length} logged events</span>
+                  <span className="text-xs text-slate-400">{logs.length} events logged</span>
                 </div>
 
-                <div className="space-y-2 font-mono text-xs">
+                <div className="space-y-2">
                   {logs.map((log) => (
-                    <div 
+                    <div
                       key={log.id}
-                      className="p-3 bg-slate-950/90 border border-slate-800/80 rounded-xl flex items-center justify-between gap-4"
+                      className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
+                        log.type === "success" 
+                          ? "bg-emerald-50/50 dark:bg-emerald-500/10 border-emerald-200/80 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+                          : log.type === "danger"
+                          ? "bg-rose-50/50 dark:bg-rose-500/10 border-rose-200/80 dark:border-rose-500/20 text-rose-800 dark:text-rose-300"
+                          : log.type === "warning"
+                          ? "bg-amber-50/50 dark:bg-amber-500/10 border-amber-200/80 dark:border-amber-500/20 text-amber-800 dark:text-amber-300"
+                          : "bg-slate-50 dark:bg-slate-950 border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-300"
+                      }`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className={`w-2 h-2 rounded-full shrink-0 ${
-                          log.type === "success" ? "bg-emerald-400" :
-                          log.type === "danger" ? "bg-rose-500 animate-pulse" :
-                          log.type === "warning" ? "bg-amber-400" : "bg-indigo-400"
-                        }`} />
+                        <span className="font-mono text-[10px] opacity-75 shrink-0">{log.timestamp}</span>
                         <div>
-                          <span className="font-bold text-white mr-2">{log.action}:</span>
-                          <span className="text-slate-300">{log.details}</span>
+                          <div className="font-bold">{log.action}</div>
+                          <div className="text-[11px] opacity-90">{log.details}</div>
                         </div>
                       </div>
-                      <span className="text-[10px] text-slate-500 shrink-0">{log.timestamp}</span>
                     </div>
                   ))}
                 </div>
@@ -1299,82 +1428,70 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      {/* INSPECT USER MODAL */}
+      {/* USER INSPECTOR MODAL */}
       <AnimatePresence>
         {selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-            <motion.div 
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full space-y-5 shadow-2xl relative"
+              className={`w-full max-w-lg p-6 rounded-3xl border shadow-2xl space-y-5 relative ${cardClasses}`}
             >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <User className="w-5 h-5 text-indigo-400" />
-                  <h3 className="font-bold text-base text-white">Inspect User Record</h3>
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-base">
+                    {selectedUser.username ? selectedUser.username.charAt(0).toUpperCase() : "U"}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-slate-900 dark:text-white">@{selectedUser.username || "unnamed"}</h3>
+                    <p className="text-xs text-slate-400">{selectedUser.displayName || "No Display Name"}</p>
+                  </div>
                 </div>
-                <button 
-                  onClick={() => setSelectedUser(null)}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-                >
+
+                <button onClick={() => setSelectedUser(null)} className="p-1 text-slate-400 hover:text-slate-600">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="space-y-3 text-xs">
-                <div className="p-3 bg-slate-950 rounded-xl space-y-1">
-                  <span className="text-slate-500 font-medium">Username & Handle:</span>
-                  <p className="font-bold text-white text-sm">@{selectedUser.username || "N/A"}</p>
+                <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1 font-mono">
+                  <span className="text-slate-400 text-[10px] block">UID</span>
+                  <div className="text-slate-900 dark:text-slate-200 font-bold select-all">{selectedUser.uid}</div>
                 </div>
 
-                <div className="p-3 bg-slate-950 rounded-xl space-y-1">
-                  <span className="text-slate-500 font-medium">User ID (UID):</span>
-                  <p className="font-mono text-slate-300 break-all">{selectedUser.uid}</p>
+                <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1">
+                  <span className="text-slate-400 text-[10px] block">Email Recovery Address</span>
+                  <div className="text-slate-900 dark:text-slate-200 font-semibold">{selectedUser.email || "None Linked"}</div>
                 </div>
 
-                <div className="p-3 bg-slate-950 rounded-xl space-y-1">
-                  <span className="text-slate-500 font-medium">Email Address:</span>
-                  <p className="font-mono text-slate-300">{selectedUser.email || "No email linked"}</p>
-                </div>
-
-                <div className="p-3 bg-slate-950 rounded-xl space-y-1">
-                  <span className="text-slate-500 font-medium">Account Status:</span>
-                  <p className={`font-bold ${selectedUser.isLocked ? "text-rose-400" : "text-emerald-400"}`}>
-                    {selectedUser.isLocked ? "Suspended / Locked" : "Active & Clear"}
-                  </p>
-                </div>
-
-                {selectedUser.publicKey && (
-                  <div className="p-3 bg-slate-950 rounded-xl space-y-1">
-                    <span className="text-slate-500 font-medium">RSA Public Encryption Key Snippet:</span>
-                    <p className="font-mono text-[10px] text-slate-400 break-all line-clamp-3">
-                      {selectedUser.publicKey}
-                    </p>
+                <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1 font-mono">
+                  <span className="text-slate-400 text-[10px] block">RSA Public Key Snippet</span>
+                  <div className="text-slate-500 dark:text-slate-400 text-[11px] truncate">
+                    {selectedUser.publicKey ? selectedUser.publicKey : "No key pair generated"}
                   </div>
-                )}
+                </div>
               </div>
 
-              <div className="flex items-center gap-3 pt-2">
+              <div className="pt-2 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
                 <button
                   onClick={() => handleToggleLockUser(selectedUser)}
-                  className={`flex-1 py-2.5 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-2 ${
-                    selectedUser.isLocked
-                      ? "bg-emerald-600 hover:bg-emerald-500 text-white"
-                      : "bg-rose-600 hover:bg-rose-500 text-white"
+                  disabled={actionUserUid === selectedUser.uid}
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-bold text-white flex items-center gap-1.5 transition-all ${
+                    selectedUser.isLocked ? "bg-emerald-600 hover:bg-emerald-700" : "bg-rose-600 hover:bg-rose-700"
                   }`}
                 >
                   {selectedUser.isLocked ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
-                  <span>{selectedUser.isLocked ? "Unlock User Account" : "Suspend Account"}</span>
+                  <span>{selectedUser.isLocked ? "Reactivate Account" : "Suspend Account"}</span>
                 </button>
+
                 <button
                   onClick={() => setSelectedUser(null)}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold text-xs"
+                  className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold rounded-2xl text-xs"
                 >
-                  Close
+                  Close Inspector
                 </button>
               </div>
-
             </motion.div>
           </div>
         )}

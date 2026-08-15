@@ -48,7 +48,7 @@ export default function Layout() {
         </header>
       )}
       
-      <main className="flex-1 overflow-y-auto w-full relative">
+      <main className="flex-1 overflow-y-auto w-full relative flex flex-col justify-center">
         <Outlet />
       </main>
     </div>

@@ -135,6 +135,12 @@ export default function Home() {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
+        // Check if registrations are allowed
+        const sysSnap = await getDocs(query(collection(db, "systemSettings")));
+        const globalSys = sysSnap.docs.find(d => d.id === "global")?.data();
+        if (globalSys && globalSys.allowRegistrations === false) {
+          throw new Error("New registrations are currently disabled by the administrator.");
+        }
         await createUserWithEmailAndPassword(auth, email, password);
       }
       setSessionCreatedAt(Date.now());
@@ -271,6 +277,27 @@ export default function Home() {
       console.error("Sign out error", err);
     }
   };
+
+  if (user && dbUser && dbUser.isLocked) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-sm mx-auto my-auto">
+        <div className="w-20 h-20 bg-red-500/10 border-2 border-red-500/30 rounded-3xl flex items-center justify-center mb-6">
+          <Lock className="w-10 h-10 text-red-500" />
+        </div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Account Suspended</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+          Your account (@{dbUser.username}) has been suspended by an administrator. You cannot access this account at this time.
+        </p>
+        <button
+          onClick={handleSignOut}
+          className="w-full py-3 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-2xl transition-colors flex items-center justify-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          Sign Out
+        </button>
+      </div>
+    );
+  }
 
   if (user && dbUser && privateKey) {
     return <Navigate to="/dashboard" replace />;

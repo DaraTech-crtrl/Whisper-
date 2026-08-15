@@ -181,6 +181,17 @@ export default function PublicProfile() {
               </div>
             </div>
 
+            {profile.isLocked ? (
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-center space-y-2 my-4">
+                <div className="w-10 h-10 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mx-auto">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-red-500 text-sm">Account Suspended</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  This user account has been suspended by an administrator and cannot currently receive new messages.
+                </p>
+              </div>
+            ) : (
             <form onSubmit={handleSend} className="space-y-4">
               <div className="relative">
                 <textarea
@@ -247,6 +258,7 @@ export default function PublicProfile() {
                 {!isSending && <Send className="w-4 h-4 ml-1" />}
               </button>
             </form>
+            )}
           </motion.div>
         ) : (
           <motion.div 

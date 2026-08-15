@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Navigate } from "react-router-dom";
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDoc, setDoc, writeBatch } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db, auth } from "../lib/firebase";
 import { useAuthStore } from "../lib/store";
 import { decryptMessage } from "../lib/crypto";
 import { 
@@ -626,6 +626,26 @@ export default function Dashboard() {
       setIsExporting(false);
     }
   };
+
+  if (dbUser?.isLocked) {
+    return (
+      <div className="p-6 py-12 max-w-md mx-auto min-h-screen flex flex-col justify-center items-center text-center">
+        <div className="w-20 h-20 bg-red-500/10 border-2 border-red-500/30 rounded-3xl flex items-center justify-center mb-6">
+          <Lock className="w-10 h-10 text-red-500" />
+        </div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Account Suspended</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+          Your account (@{dbUser.username}) has been locked or suspended by an administrator. Access to your inbox and settings is currently disabled.
+        </p>
+        <button
+          onClick={() => auth.signOut()}
+          className="w-full py-3 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-2xl transition-colors"
+        >
+          Sign Out
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 py-8 max-w-md mx-auto space-y-6 min-h-screen pb-28">

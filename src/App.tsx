@@ -11,6 +11,7 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import PublicProfile from "./pages/PublicProfile";
 import AdminDashboard from "./pages/AdminDashboard";
+import Maintenance from "./pages/Maintenance";
 
 export default function App() {
   const { 
@@ -99,6 +100,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/admin/unknownofrun" element={<AdminDashboard />} />
+        <Route path="/maintenance" element={<Maintenance />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Welcome />} />
           <Route path="/auth" element={<Home />} />

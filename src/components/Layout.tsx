@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { LogOut, AlertTriangle, Bell, ShieldAlert } from "lucide-react";
+import { LogOut, Bell } from "lucide-react";
 import { auth, db } from "../lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useAuthStore } from "../lib/store";
 import { getAssetUrl } from "../lib/assets";
 import LoadingScreen from "./LoadingScreen";
+import Maintenance from "../pages/Maintenance";
 
 export interface SystemSettings {
   maintenanceMode?: boolean;
@@ -45,23 +46,9 @@ export default function Layout() {
   const isAdminRoute = location.pathname.startsWith("/admin");
   const isWelcomeOrAuth = location.pathname === "/" || location.pathname === "/auth";
 
-  // System Maintenance Block (does NOT affect /admin routes)
+  // Standalone Maintenance Mode Guard (Applies to all non-admin routes instantly)
   if (sysSettings?.maintenanceMode && !isAdminRoute) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-950 text-slate-100 text-center max-w-md mx-auto relative overflow-hidden">
-        <div className="w-20 h-20 bg-amber-500/10 border-2 border-amber-500/30 rounded-3xl flex items-center justify-center mx-auto mb-6 p-2 shadow-2xl shadow-amber-500/10">
-          <ShieldAlert className="w-10 h-10 text-amber-400" />
-        </div>
-        <h1 className="text-2xl font-black text-white tracking-tight mb-2">System Under Maintenance</h1>
-        <p className="text-sm text-slate-300 leading-relaxed mb-6 bg-slate-900/80 p-4 border border-slate-800 rounded-2xl">
-          {sysSettings.maintenanceMessage || "Whisper is currently undergoing scheduled maintenance. Please check back shortly."}
-        </p>
-        <div className="text-xs text-slate-500 flex items-center gap-1.5 justify-center">
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          <span>Maintenance Mode Active</span>
-        </div>
-      </div>
-    );
+    return <Maintenance />;
   }
 
   return (

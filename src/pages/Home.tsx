@@ -18,6 +18,7 @@ import { auth, db } from "../lib/firebase";
 import { useAuthStore } from "../lib/store";
 import { generateKeyPair, wrapPrivateKey, unwrapPrivateKey } from "../lib/crypto";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
+import { getAssetUrl } from "../lib/assets";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Lock, 
@@ -307,11 +308,11 @@ export default function Home() {
               />
             ) : (
               <>
-                <div className="w-20 h-20 bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 rounded-3xl flex items-center justify-center mb-6 shadow-xl shadow-indigo-500/20 p-2 ring-4 ring-indigo-500/10">
+                <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-lg shadow-indigo-100 border-2 border-indigo-50 p-2 ring-4 ring-indigo-500/5">
                   <img 
-                    src="/favicon.svg" 
+                    src={getAssetUrl("android-chrome-192x192.png")} 
                     alt="Whisper Logo" 
-                    className="w-16 h-16 object-contain rounded-2xl drop-shadow"
+                    className="w-16 h-16 object-contain rounded-2xl"
                     referrerPolicy="no-referrer"
                   />
                 </div>
@@ -471,8 +472,8 @@ export default function Home() {
             exit={{ opacity: 0, scale: 0.95 }}
             className="w-full max-w-sm flex flex-col items-center justify-center p-8 bg-white/70 dark:bg-slate-900/60 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-xl text-center shadow-lg"
           >
-            <div className="w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center p-2 mb-4 animate-pulse shadow-md shadow-indigo-500/20">
-              <img src="/favicon.svg" alt="Whisper" className="w-12 h-12 rounded-xl object-contain" referrerPolicy="no-referrer" />
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center p-2 mb-4 animate-pulse shadow-md shadow-indigo-100 border border-indigo-50">
+              <img src={getAssetUrl("android-chrome-192x192.png")} alt="Whisper" className="w-12 h-12 rounded-xl object-contain" referrerPolicy="no-referrer" />
             </div>
             <h3 className="font-bold text-base text-slate-900 dark:text-white">Connecting to Whisper...</h3>
             <p className="text-xs text-slate-400 mt-1">Verifying encrypted profile</p>

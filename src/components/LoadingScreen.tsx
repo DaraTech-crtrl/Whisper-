@@ -1,5 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
+import { getAssetUrl } from "../lib/assets";
 
 interface LoadingScreenProps {
   message?: string;
@@ -28,11 +29,11 @@ export default function LoadingScreen({
         <div className="absolute w-24 h-24 bg-indigo-500/20 dark:bg-indigo-500/30 rounded-full blur-2xl animate-pulse" />
         
         {/* Branded Logo Container */}
-        <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center p-1.5 bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 shadow-xl shadow-indigo-500/25 ring-4 ring-indigo-500/10">
+        <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center p-1.5 bg-white shadow-xl shadow-indigo-100 border-2 border-indigo-50 ring-4 ring-indigo-500/5">
           <img 
-            src="/favicon.svg" 
+            src={getAssetUrl("android-chrome-192x192.png")} 
             alt="Whisper Logo" 
-            className="w-16 h-16 object-contain rounded-2xl drop-shadow-md"
+            className="w-16 h-16 object-contain rounded-2xl"
             referrerPolicy="no-referrer"
           />
         </div>

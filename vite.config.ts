@@ -1,11 +1,23 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, Plugin} from 'vite';
+
+const buildVersion = Date.now().toString();
+
+const htmlVersionPlugin = (): Plugin => ({
+  name: 'html-version-transform',
+  transformIndexHtml(html: string) {
+    return html.replace(/%BUILD_VERSION%/g, buildVersion);
+  },
+});
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    define: {
+      'import.meta.env.VITE_BUILD_VERSION': JSON.stringify(buildVersion),
+    },
+    plugins: [react(), tailwindcss(), htmlVersionPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

@@ -6,6 +6,7 @@ import { auth, db } from "./lib/firebase";
 import { useAuthStore } from "./lib/store";
 
 import Layout from "./components/Layout";
+import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import PublicProfile from "./pages/PublicProfile";
@@ -97,7 +98,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<Welcome />} />
+          <Route path="/auth" element={<Home />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/u/:username" element={<PublicProfile />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -316,9 +316,20 @@ export default function Home() {
                   />
                 </div>
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">Anonymous Q&A</h1>
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-8 leading-relaxed">
+                <p className="text-slate-500 dark:text-slate-400 text-sm mb-6 leading-relaxed">
                   Receive end-to-end encrypted anonymous messages with zero traces.
                 </p>
+
+                <div className="w-full flex justify-center mb-6">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/")}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 rounded-full"
+                  >
+                    <ArrowRight className="w-4 h-4 rotate-180" />
+                    Back to Welcome
+                  </button>
+                </div>
 
                 <form onSubmit={handleEmailAuth} className="w-full space-y-4 mb-4">
                   <div className="w-full">

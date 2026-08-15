@@ -35,10 +35,19 @@ service cloud.firestore {
           !('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128)
         )
         && (
+          !('email' in data) || (data.email is string && data.email.size() <= 256)
+        )
+        && (
+          !('emailLower' in data) || (data.emailLower is string && data.emailLower.size() <= 256)
+        )
+        && (
           !('bio' in data) || (data.bio is string && data.bio.size() <= 500)
         )
         && (
           !('messageExpiryHours' in data) || (data.messageExpiryHours is number)
+        )
+        && (
+          !('messageExpiryActivatedAt' in data) || (data.messageExpiryActivatedAt is timestamp)
         )
         && (
           !('onboardingCompleted' in data) || (data.onboardingCompleted is bool)
@@ -84,6 +93,18 @@ service cloud.firestore {
         && (
           !('mood' in data) || (data.mood is string && data.mood.size() <= 16)
         )
+        && (
+          !('archived' in data) || (data.archived is bool)
+        )
+        && (
+          !('archivedAt' in data) || (data.archivedAt is timestamp)
+        )
+        && (
+          !('tags' in data) || (data.tags is list && data.tags.size() <= 10)
+        )
+        && (
+          !('tag' in data) || (data.tag is string && data.tag.size() <= 64)
+        )
     }
 
     match /users/{userId}/messages/{messageId} {
@@ -98,10 +119,10 @@ service cloud.firestore {
         && incoming().read == false
         && incoming().isFlagged == false;
 
-      // Receiver can mark as read, flagged, or delete
+      // Receiver can mark as read, flagged, reaction, rating, archived, archivedAt, tags, or delete
       allow update: if isSignedIn()
         && request.auth.uid == userId
-        && incoming().diff(existing()).affectedKeys().hasAny(['read', 'isFlagged', 'reaction', 'rating']);
+        && incoming().diff(existing()).affectedKeys().hasAny(['read', 'isFlagged', 'reaction', 'rating', 'archived', 'archivedAt', 'tags', 'tag']);
 
       allow delete: if isSignedIn() && request.auth.uid == userId;
     }
@@ -122,7 +143,7 @@ service cloud.firestore {
         && data.reporterId is string && data.reporterId.size() <= 128
         && data.reason is string && data.reason.size() <= 2048
         && data.createdAt is timestamp
-        && data.reporterId == request.auth.uid
+        && data.reporterId == request.auth.uid;
     }
 
     match /reports/{reportId} {
@@ -134,6 +155,28 @@ service cloud.firestore {
         && isValidId(reportId)
         && isValidReport(incoming())
         && incoming().createdAt == request.time;
+    }
+
+    function isValidPasswordReset(data) {
+      return data.keys().hasAll(['email', 'codeHash', 'expiresAt', 'attempts', 'verified', 'createdAt'])
+        && data.email is string && data.email.size() <= 256
+        && data.codeHash is string && data.codeHash.size() <= 128
+        && data.expiresAt is number
+        && data.attempts is number
+        && data.verified is bool
+        && data.createdAt is timestamp;
+    }
+
+    match /passwordResets/{resetId} {
+      allow read: if true;
+      allow create: if isValidId(resetId)
+        && isValidPasswordReset(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(resetId)
+        && incoming().diff(existing()).affectedKeys().hasAny(['attempts', 'verified'])
+        && incoming().attempts is number
+        && incoming().verified is bool;
+      allow delete: if false;
     }
   }
 }

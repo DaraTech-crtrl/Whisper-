@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { encryptMessage } from "../lib/crypto";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
-import { MessageSquare, Send, CheckCircle2, AlertTriangle, Lock, Award, Mic, Square, Watch, Calendar } from "lucide-react";
+import { Send, CheckCircle2, AlertTriangle, Lock, Award, Watch } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import LoadingScreen from "../components/LoadingScreen";
 
 export default function PublicProfile() {
   const { username } = useParams<{ username: string }>();
@@ -22,114 +23,8 @@ export default function PublicProfile() {
 
   const [unlocksAtData, setUnlocksAtData] = useState<string>("");
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordedAudio, setRecordedAudio] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-
   const BAD_WORDS = ["hate", "kill", "die", "stupid", "idiot", "dumb"];
   const MOODS = ['😎', '🤔', '🥺', '🤣', '🤫', '👀'];
-  const PROMPTS = [
-    "What's your first impression of me?",
-    "Send me a song recommendation 🎵",
-    "What's an unspoken rule you have?",
-    "If you could tell me one thing...",
-    "Ask me anything!",
-    "What's your current favorite show?"
-  ];
-
-  const handleRandomPrompt = () => {
-    const random = PROMPTS[Math.floor(Math.random() * PROMPTS.length)];
-    const el = document.getElementById("message-input") as HTMLTextAreaElement;
-    if (el) {
-      el.placeholder = random;
-      el.focus();
-    }
-  };
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const audioCtx = new AudioContext();
-      audioCtxRef.current = audioCtx;
-      
-      const source = audioCtx.createMediaStreamSource(stream);
-      
-      // Pitch-shift / robot masking effect
-      const osc = audioCtx.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.value = 50;
-      
-      const oscGain = audioCtx.createGain();
-      osc.connect(oscGain);
-      
-      const ringModGain = audioCtx.createGain();
-      ringModGain.gain.value = 0; // modulated by osc
-      oscGain.connect(ringModGain.gain);
-      
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = "bandpass";
-      filter.frequency.value = 1000;
-      
-      source.connect(filter);
-      filter.connect(ringModGain);
-      // Wait, ring modulation is source -> gain -> dest; osc -> gain.gain
-      // Actually simpler: just bandpass then distort
-      filter.disconnect();
-      source.connect(filter);
-      
-      // simple distortion
-      const shaper = audioCtx.createWaveShaper();
-      function makeDistortionCurve(amount: number) {
-        const k = amount;
-        const n_samples = 44100;
-        const curve = new Float32Array(n_samples);
-        const deg = Math.PI / 180;
-        for (let i = 0 ; i < n_samples; ++i ) {
-          const x = i * 2 / n_samples - 1;
-          curve[i] = ( 3 + k ) * x * 20 * deg / ( Math.PI + k * Math.abs(x) );
-        }
-        return curve;
-      }
-      shaper.curve = makeDistortionCurve(50);
-      shaper.oversample = '4x';
-      
-      filter.connect(shaper);
-
-      const dest = audioCtx.createMediaStreamDestination();
-      shaper.connect(dest);
-      
-      // Some browsers require the oscillator to be started for ring mods, but we'll stick to distortion.
-      const mediaRecorder = new MediaRecorder(dest.stream);
-      mediaRecorderRef.current = mediaRecorder;
-      
-      const chunks: Blob[] = [];
-      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setRecordedAudio(reader.result as string);
-        };
-        reader.readAsDataURL(blob);
-        stream.getTracks().forEach(t => t.stop());
-      };
-      
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (err) {
-      console.error(err);
-      setError("Microphone access denied or error starting recording.");
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      audioCtxRef.current?.close();
-    }
-  };
 
   useEffect(() => {
     let storedId = localStorage.getItem('anonId');
@@ -188,7 +83,7 @@ export default function PublicProfile() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!message.trim() && !recordedAudio) || !profile) return;
+    if (!message.trim() || !profile) return;
     setError("");
 
     const lowerMsg = message.toLowerCase();
@@ -199,13 +94,8 @@ export default function PublicProfile() {
     }
 
     setIsSending(true);
-    let payload = message;
-    if (recordedAudio) {
-      payload = recordedAudio;
-    }
-
     try {
-      const encrypted = await encryptMessage(profile.publicKey, payload);
+      const encrypted = await encryptMessage(profile.publicKey, message);
       
       const payloadData: any = {
         receiverId: profile.uid,
@@ -229,7 +119,6 @@ export default function PublicProfile() {
 
       setSent(true);
       setMessage("");
-      setRecordedAudio(null);
       setUnlocksAtData("");
     } catch (err: any) {
       setError(getFriendlyErrorMessage(err) || "Failed to send message securely. Please try again.");
@@ -239,11 +128,7 @@ export default function PublicProfile() {
   };
 
   if (status === "loading") {
-    return (
-      <div className="flex-1 flex items-center justify-center min-h-[50vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-      </div>
-    );
+    return <LoadingScreen message="Whisper" subtext="Finding public profile..." fullScreen={false} />;
   }
 
   if (status === "not_found" || !profile) {
@@ -291,60 +176,25 @@ export default function PublicProfile() {
                   {profile.bio}
                 </p>
               )}
-              <div className="flex items-center gap-2 mt-4">
+              <div className="mt-4">
                 <p className="text-xs text-slate-400 dark:text-slate-500 font-medium uppercase tracking-widest">Send an anonymous message</p>
-                <button type="button" onClick={handleRandomPrompt} className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded shadow-sm hover:scale-105 transition-transform">
-                  🎲 Prompt
-                </button>
               </div>
             </div>
 
             <form onSubmit={handleSend} className="space-y-4">
-              {!recordedAudio && !isRecording && (
-                <div className="relative">
-                  <textarea
-                    id="message-input"
-                    value={message}
-                    onChange={e => setMessage(e.target.value)}
-                    placeholder="Send me anonymous feedback... or a voice note below!"
-                    className="w-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 min-h-[140px] resize-none outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-sans"
-                    maxLength={500}
-                    disabled={!!recordedAudio}
-                  />
-                  <div className="absolute bottom-3 right-4 text-xs font-mono text-slate-400">
-                    {message.length}/500
-                  </div>
+              <div className="relative">
+                <textarea
+                  id="message-input"
+                  value={message}
+                  onChange={e => setMessage(e.target.value)}
+                  placeholder="Send me an anonymous message..."
+                  className="w-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 min-h-[140px] resize-none outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-sans text-base"
+                  maxLength={500}
+                />
+                <div className="absolute bottom-3 right-4 text-xs font-mono text-slate-400">
+                  {message.length}/500
                 </div>
-              )}
-
-              {isRecording && (
-                <div className="w-full bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/50 rounded-2xl p-6 flex flex-col items-center justify-center animate-pulse">
-                  <div className="w-16 h-16 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center mb-4">
-                    <Mic className="w-8 h-8 text-red-500" />
-                  </div>
-                  <p className="text-red-500 font-medium mb-4">Recording Voice Note with Masking...</p>
-                  <button type="button" onClick={stopRecording} className="bg-red-500 text-white px-6 py-2 rounded-full font-bold shadow-sm hover:bg-red-600 flex items-center gap-2">
-                    <Square className="w-4 h-4 fill-current" /> Stop Recording
-                  </button>
-                </div>
-              )}
-
-              {recordedAudio && !isRecording && (
-                <div className="w-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-4 flex flex-col items-center justify-center relative">
-                  <audio src={recordedAudio} controls className="w-full mb-2" />
-                  <p className="text-xs text-indigo-500 mb-2 font-medium">Masked Voice Note Ready</p>
-                  <button type="button" onClick={() => setRecordedAudio(null)} className="text-xs text-slate-500 hover:text-slate-700 underline">
-                    Discard & Write Text
-                  </button>
-                </div>
-              )}
-
-              {!recordedAudio && !isRecording && !message.trim() && (
-                <button type="button" onClick={startRecording} className="w-full flex items-center justify-center gap-2 py-3 border-2 border-slate-200 dark:border-slate-800 border-dashed rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors font-medium">
-                  <Mic className="w-5 h-5 text-indigo-500" />
-                  Record Masked Voice Note
-                </button>
-              )}
+              </div>
 
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
                 <span className="text-xs font-medium text-slate-400 dark:text-slate-500 mr-1 pl-1">Mood:</span>
@@ -366,11 +216,12 @@ export default function PublicProfile() {
                   Time-Capsule Delivery (Optional)
                 </label>
                 <input 
+                  id="profile-time-capsule-input"
                   type="datetime-local" 
                   value={unlocksAtData}
                   onChange={(e) => setUnlocksAtData(e.target.value)}
                   min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-900 dark:text-slate-100"
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-base outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-900 dark:text-slate-100"
                 />
                 {unlocksAtData && (
                    <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2">
@@ -389,7 +240,7 @@ export default function PublicProfile() {
 
               <button 
                 type="submit"
-                disabled={isSending || (!message.trim() && !recordedAudio)}
+                disabled={isSending || !message.trim()}
                 className="w-full flex items-center justify-center gap-2 bg-indigo-600 dark:bg-indigo-500 hover:opacity-90 text-white font-bold py-4 px-6 rounded-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-indigo-500/20"
               >
                 {isSending ? "Encrypting & Sending..." : "Send Message"}

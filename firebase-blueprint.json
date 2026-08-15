@@ -10,6 +10,7 @@
         "displayName": { "type": "string" },
         "bio": { "type": "string" },
         "messageExpiryHours": { "type": "number" },
+        "messageExpiryActivatedAt": { "type": "number" },
         "onboardingCompleted": { "type": "boolean" },
         "publicKey": { "type": "string" },
         "encryptedPrivateKey": { "type": "string" },
@@ -29,7 +30,10 @@
         "createdAt": { "type": "number" },
         "read": { "type": "boolean" },
         "isFlagged": { "type": "boolean" },
-        "reaction": { "type": "string" }
+        "reaction": { "type": "string" },
+        "archived": { "type": "boolean" },
+        "archivedAt": { "type": "number" },
+        "tags": { "type": "array" }
       },
       "required": ["receiverId", "encryptedContent", "createdAt", "read", "isFlagged"]
     },
@@ -44,6 +48,20 @@
         "createdAt": { "type": "number" }
       },
       "required": ["messageId", "reporterId", "reason", "createdAt"]
+    },
+    "PasswordReset": {
+      "title": "PasswordReset",
+      "description": "6-digit OTP password reset verification request",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "codeHash": { "type": "string" },
+        "expiresAt": { "type": "number" },
+        "attempts": { "type": "number" },
+        "verified": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["email", "codeHash", "expiresAt", "attempts", "verified", "createdAt"]
     }
   },
   "firestore": {
@@ -58,6 +76,10 @@
     "reports/{reportId}": {
       "schema": { "$ref": "#/entities/Report" },
       "description": "Reports of inappropriate messages."
+    },
+    "passwordResets/{resetId}": {
+      "schema": { "$ref": "#/entities/PasswordReset" },
+      "description": "Temporary password reset requests with hashed verification codes."
     }
   }
 }

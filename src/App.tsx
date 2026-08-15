@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
 import { useAuthStore } from "./lib/store";
 
@@ -15,6 +15,7 @@ export default function App() {
     setAuthReady, 
     setUser, 
     setDbUser, 
+    setIsDbUserLoaded,
     setPrivateKey, 
     sessionCreatedAt, 
     setSessionCreatedAt, 
@@ -42,21 +43,38 @@ export default function App() {
         }
 
         setUser(user);
+        setIsDbUserLoaded(false);
 
         if (unsubDb) {
           unsubDb();
           unsubDb = null;
         }
 
-        unsubDb = onSnapshot(doc(db, "users", user.uid), (snap) => {
+        unsubDb = onSnapshot(doc(db, "users", user.uid), async (snap) => {
           if (snap.exists()) {
-            setDbUser(snap.data());
+            const data = snap.data();
+            setDbUser(data);
+            
+            // Retroactively backfill email for older accounts
+            if (user.email && (!data.email || !data.emailLower)) {
+              try {
+                await updateDoc(doc(db, "users", user.uid), {
+                  email: user.email,
+                  emailLower: user.email.toLowerCase()
+                });
+                console.info("Backfilled missing email data for user profile.");
+              } catch (err) {
+                console.warn("Could not backfill email:", err);
+              }
+            }
           } else {
             setDbUser(null);
+            setIsDbUserLoaded(true);
           }
           setAuthReady(true);
         }, (error) => {
           console.error("Dashboard error: ", error);
+          setIsDbUserLoaded(true);
           setAuthReady(true);
         });
       } else {
@@ -73,7 +91,7 @@ export default function App() {
       if (unsubDb) unsubDb();
       unsubAuth();
     };
-  }, [sessionCreatedAt, isSessionExpired, setSessionCreatedAt, setUser, setDbUser, setPrivateKey, clearSession, setAuthReady]);
+  }, [sessionCreatedAt, isSessionExpired, setSessionCreatedAt, setUser, setDbUser, setIsDbUserLoaded, setPrivateKey, clearSession, setAuthReady]);
 
   return (
     <BrowserRouter>

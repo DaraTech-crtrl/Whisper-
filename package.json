@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
     "preview": "vite preview",
-    "start": "vite preview --host",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },
@@ -23,6 +23,7 @@
     "express": "^4.21.2",
     "firebase": "^12.14.0",
     "html-to-image": "^1.11.13",
+    "localforage": "^1.10.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "qrcode.react": "^4.2.0",

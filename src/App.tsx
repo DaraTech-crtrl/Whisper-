@@ -10,6 +10,7 @@ import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import PublicProfile from "./pages/PublicProfile";
+import AdminDashboard from "./pages/AdminDashboard";
 
 export default function App() {
   const { 
@@ -97,6 +98,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/admin/unknownofrun" element={<AdminDashboard />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Welcome />} />
           <Route path="/auth" element={<Home />} />

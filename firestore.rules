@@ -178,5 +178,10 @@ service cloud.firestore {
         && incoming().verified is bool;
       allow delete: if false;
     }
+
+    match /systemSettings/{settingId} {
+      allow read: if true;
+      allow write: if true;
+    }
   }
 }

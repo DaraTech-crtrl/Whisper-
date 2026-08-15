@@ -1,4 +1,6 @@
-export const BUILD_VERSION = import.meta.env.VITE_BUILD_VERSION || Date.now().toString();
+/// <reference types="vite/client" />
+
+export const BUILD_VERSION = (import.meta as any).env?.VITE_BUILD_VERSION || Date.now().toString();
 
 export const BASE_ASSET_URL = 'https://whisper.runflix.name.ng';
 

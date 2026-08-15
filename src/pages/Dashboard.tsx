@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { toPng } from "html-to-image";
 import { QRCodeSVG } from "qrcode.react";
+import { getFriendlyErrorMessage } from "../lib/errorHandler";
 
 interface Message {
   id: string;
@@ -217,7 +218,7 @@ export default function Dashboard() {
       });
       setProfileMessage({ text: "Profile updated successfully!", type: "success" });
     } catch (err: any) {
-      setProfileMessage({ text: err.message || "Failed to update profile", type: "error" });
+      setProfileMessage({ text: getFriendlyErrorMessage(err), type: "error" });
     } finally {
       setIsUpdatingProfile(false);
     }

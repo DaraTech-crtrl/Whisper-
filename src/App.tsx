@@ -14,11 +14,18 @@ export default function App() {
   const { setAuthReady, setUser, setDbUser, setPrivateKey } = useAuthStore();
 
   useEffect(() => {
+    let unsubDb: (() => void) | null = null;
+
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       setUser(user);
+
+      if (unsubDb) {
+        unsubDb();
+        unsubDb = null;
+      }
       
       if (user) {
-        const unsubDb = onSnapshot(doc(db, "users", user.uid), (snap) => {
+        unsubDb = onSnapshot(doc(db, "users", user.uid), (snap) => {
           if (snap.exists()) {
             setDbUser(snap.data());
           } else {
@@ -29,8 +36,6 @@ export default function App() {
           console.error("Dashboard error: ", error);
           setAuthReady(true);
         });
-        
-        return () => unsubDb();
       } else {
         setDbUser(null);
         setPrivateKey(null);
@@ -38,7 +43,10 @@ export default function App() {
       }
     });
 
-    return () => unsubAuth();
+    return () => {
+      if (unsubDb) unsubDb();
+      unsubAuth();
+    };
   }, []);
 
   return (

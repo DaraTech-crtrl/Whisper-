@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { encryptMessage } from "../lib/crypto";
+import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { MessageSquare, Send, CheckCircle2, AlertTriangle, Lock, Award, Mic, Square, Watch, Calendar } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -219,7 +220,7 @@ export default function PublicProfile() {
       setRecordedAudio(null);
       setUnlocksAtData("");
     } catch (err: any) {
-      setError("Failed to send message securely. Please try again.");
+      setError(getFriendlyErrorMessage(err) || "Failed to send message securely. Please try again.");
     } finally {
       setIsSending(false);
     }

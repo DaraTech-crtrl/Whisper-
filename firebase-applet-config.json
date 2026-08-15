@@ -1,10 +1,12 @@
 {
-  "projectId": "poetic-outcome-vln7n",
-  "appId": "1:247688679075:web:9c5761fde24adc4632f916",
-  "apiKey": "AIzaSyDNzYxfqlnkGjoNI_x_YV3cP1fC61ONaSs",
-  "authDomain": "poetic-outcome-vln7n.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-31e559b1-19ca-4177-bd71-7aaae68d6652",
-  "storageBucket": "poetic-outcome-vln7n.firebasestorage.app",
-  "messagingSenderId": "247688679075",
-  "measurementId": ""
+  "projectId": "whisperanonnymous",
+  "appId": "1:314527952957:web:fc43830e34f9dd725aba54",
+  "apiKey": "AIzaSyB-cR-cie_PPzsD3YE3qQRRGJuOwUXhPmw",
+  "authDomain": "whisperanonnymous.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "whisperanonnymous.firebasestorage.app",
+  "messagingSenderId": "314527952957",
+  "measurementId": "",
+  "oAuthClientId": "",
+  "recaptchaSiteKey": ""
 }

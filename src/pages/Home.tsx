@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
@@ -14,8 +16,9 @@ import { doc, setDoc, query, collection, where, getDocs, serverTimestamp } from 
 import { auth, db } from "../lib/firebase";
 import { useAuthStore } from "../lib/store";
 import { generateKeyPair, wrapPrivateKey, unwrapPrivateKey } from "../lib/crypto";
+import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { motion, AnimatePresence } from "motion/react";
-import { Lock, Unlock, KeyRound, User, MessageSquare, Mail, Eye, EyeOff } from "lucide-react";
+import { Lock, Unlock, KeyRound, User, MessageSquare, Mail, Eye, EyeOff, AlertTriangle } from "lucide-react";
 
 export default function Home() {
   const { user, dbUser, privateKey, setPrivateKey } = useAuthStore();
@@ -42,6 +45,15 @@ export default function Home() {
   
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
+
+  useEffect(() => {
+    getRedirectResult(auth)
+      .catch((err) => {
+        if (err?.code !== "auth/credential-already-in-use") {
+          console.warn("Redirect auth info:", err);
+        }
+      });
+  }, []);
 
   const getPasswordStrength = () => {
     let score = 0;
@@ -101,7 +113,7 @@ export default function Home() {
         await createUserWithEmailAndPassword(auth, email, password);
       }
     } catch (err: any) {
-      setError(err.message || "Authentication failed");
+      setError(getFriendlyErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -116,7 +128,7 @@ export default function Home() {
       await sendPasswordResetEmail(auth, email);
       setResetEmailSent(true);
     } catch (err: any) {
-      setError(err.message || "Failed to send reset email");
+      setError(getFriendlyErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -128,9 +140,22 @@ export default function Home() {
     try {
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
     } catch (err: any) {
-      setError(err.message || "Failed to login");
+      if (err.code === "auth/popup-blocked" || err.code === "auth/cancelled-popup-request") {
+        try {
+          const provider = new GoogleAuthProvider();
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectErr: any) {
+          setError("Google popup was blocked. Please allow popups or use Email & Password below.");
+        }
+      } else if (err.code === "auth/popup-closed-by-user") {
+        // user closed the popup intentionally
+      } else {
+        setError(getFriendlyErrorMessage(err));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -155,7 +180,7 @@ export default function Home() {
       const q = query(collection(db, "users"), where("username", "==", username));
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
-        setError("Username already taken.");
+        setError("Username is already taken. Please choose another.");
         setIsLoading(false);
         return;
       }
@@ -179,7 +204,7 @@ export default function Home() {
       navigate("/dashboard");
 
     } catch (err: any) {
-      setError(err.message || "Failed to complete setup.");
+      setError(getFriendlyErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -367,7 +392,16 @@ export default function Home() {
               </>
             )}
             
-            {error && <p className="text-red-500 mt-4 text-sm bg-red-50 dark:bg-red-900/20 w-full p-2 rounded-lg text-center">{error}</p>}
+            {error && (
+              <motion.div 
+                initial={{ opacity: 0, y: 5 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                className="flex items-start gap-2.5 text-rose-600 dark:text-rose-300 mt-4 text-sm bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 w-full p-3 rounded-xl text-left leading-relaxed"
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                <span>{error}</span>
+              </motion.div>
+            )}
           </motion.div>
         ) : !dbUser ? (
           <motion.div 
@@ -424,7 +458,12 @@ export default function Home() {
                 </p>
               </div>
 
-              {error && <p className="text-red-500 text-sm">{error}</p>}
+              {error && (
+                <div className="flex items-start gap-2.5 text-rose-600 dark:text-rose-300 text-sm bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 w-full p-3 rounded-xl text-left leading-relaxed">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
 
               <button 
                 type="submit"
@@ -468,7 +507,12 @@ export default function Home() {
                   {showPin ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-              {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+              {error && (
+                <div className="flex items-start gap-2.5 text-rose-600 dark:text-rose-300 text-sm bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 w-full p-3 rounded-xl text-left leading-relaxed">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
               <button 
                 type="submit"
                 disabled={isLoading}

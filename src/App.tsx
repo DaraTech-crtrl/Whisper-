@@ -11,20 +11,43 @@ import Dashboard from "./pages/Dashboard";
 import PublicProfile from "./pages/PublicProfile";
 
 export default function App() {
-  const { setAuthReady, setUser, setDbUser, setPrivateKey } = useAuthStore();
+  const { 
+    setAuthReady, 
+    setUser, 
+    setDbUser, 
+    setPrivateKey, 
+    sessionCreatedAt, 
+    setSessionCreatedAt, 
+    isSessionExpired, 
+    clearSession 
+  } = useAuthStore();
 
   useEffect(() => {
     let unsubDb: (() => void) | null = null;
 
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-
-      if (unsubDb) {
-        unsubDb();
-        unsubDb = null;
-      }
-      
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      // Check 30-day session expiry
       if (user) {
+        if (isSessionExpired()) {
+          console.info("Session expired after 30 days. Signing out...");
+          await auth.signOut();
+          clearSession();
+          setAuthReady(true);
+          return;
+        }
+
+        // Initialize session timestamp if missing
+        if (!sessionCreatedAt) {
+          setSessionCreatedAt(Date.now());
+        }
+
+        setUser(user);
+
+        if (unsubDb) {
+          unsubDb();
+          unsubDb = null;
+        }
+
         unsubDb = onSnapshot(doc(db, "users", user.uid), (snap) => {
           if (snap.exists()) {
             setDbUser(snap.data());
@@ -37,8 +60,11 @@ export default function App() {
           setAuthReady(true);
         });
       } else {
-        setDbUser(null);
-        setPrivateKey(null);
+        if (unsubDb) {
+          unsubDb();
+          unsubDb = null;
+        }
+        clearSession();
         setAuthReady(true);
       }
     });
@@ -47,7 +73,7 @@ export default function App() {
       if (unsubDb) unsubDb();
       unsubAuth();
     };
-  }, []);
+  }, [sessionCreatedAt, isSessionExpired, setSessionCreatedAt, setUser, setDbUser, setPrivateKey, clearSession, setAuthReady]);
 
   return (
     <BrowserRouter>

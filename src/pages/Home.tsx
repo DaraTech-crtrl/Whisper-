@@ -21,7 +21,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Lock, Unlock, KeyRound, User, MessageSquare, Mail, Eye, EyeOff, AlertTriangle } from "lucide-react";
 
 export default function Home() {
-  const { user, dbUser, privateKey, setPrivateKey } = useAuthStore();
+  const { user, dbUser, privateKey, setPrivateKey, setSessionCreatedAt } = useAuthStore();
   const navigate = useNavigate();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -47,6 +47,7 @@ export default function Home() {
   const [passwordError, setPasswordError] = useState("");
 
   useEffect(() => {
+    document.title = "Whisper — Anonymous Encrypted Messaging";
     getRedirectResult(auth)
       .catch((err) => {
         if (err?.code !== "auth/credential-already-in-use") {
@@ -112,6 +113,7 @@ export default function Home() {
       } else {
         await createUserWithEmailAndPassword(auth, email, password);
       }
+      setSessionCreatedAt(Date.now());
     } catch (err: any) {
       setError(getFriendlyErrorMessage(err));
     } finally {
@@ -142,6 +144,7 @@ export default function Home() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
+      setSessionCreatedAt(Date.now());
     } catch (err: any) {
       if (err.code === "auth/popup-blocked" || err.code === "auth/cancelled-popup-request") {
         try {
@@ -199,7 +202,7 @@ export default function Home() {
         updatedAt: serverTimestamp(),
       });
 
-
+      setSessionCreatedAt(Date.now());
       setPrivateKey(keys.privateKey);
       navigate("/dashboard");
 
@@ -219,6 +222,7 @@ export default function Home() {
     try {
       const unwrapped = unwrapPrivateKey(dbUser.encryptedPrivateKey, pin);
       if (unwrapped) {
+        setSessionCreatedAt(Date.now());
         setPrivateKey(unwrapped);
         navigate("/dashboard");
       } else {
@@ -343,8 +347,8 @@ export default function Home() {
                         onChange={(e) => setRememberMe(e.target.checked)}
                         className="w-4 h-4 text-indigo-600 rounded bg-slate-100 border-slate-300 focus:ring-indigo-500 dark:bg-slate-900 dark:border-slate-800"
                       />
-                      <label htmlFor="rememberMe" className="text-xs text-slate-600 dark:text-slate-400">
-                        Remember me
+                      <label htmlFor="rememberMe" className="text-xs text-slate-600 dark:text-slate-400 select-none cursor-pointer">
+                        Keep me signed in (30 days)
                       </label>
                     </div>
                     <button 

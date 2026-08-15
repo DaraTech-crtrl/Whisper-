@@ -56,6 +56,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    document.title = "Inbox & Dashboard — Whisper";
     if (!user) return;
     
     if ("Notification" in window && Notification.permission === "default") {

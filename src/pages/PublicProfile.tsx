@@ -156,6 +156,18 @@ export default function PublicProfile() {
   }, []);
 
   useEffect(() => {
+    if (username) {
+      document.title = `Send @${username} an anonymous message — Whisper`;
+    } else {
+      document.title = "Send an anonymous message — Whisper";
+    }
+
+    return () => {
+      document.title = "Whisper — Anonymous Encrypted Messaging";
+    };
+  }, [username]);
+
+  useEffect(() => {
     const fetchProfile = async () => {
       try {
         const q = query(collection(db, "users"), where("username", "==", username));

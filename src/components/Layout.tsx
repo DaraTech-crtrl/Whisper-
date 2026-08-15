@@ -4,10 +4,14 @@ import { auth } from "../lib/firebase";
 import { useAuthStore } from "../lib/store";
 
 export default function Layout() {
-  const { user, isAuthReady } = useAuthStore();
+  const { user, isAuthReady, clearSession } = useAuthStore();
 
   const handleLogout = async () => {
-    await auth.signOut();
+    try {
+      await auth.signOut();
+    } finally {
+      clearSession();
+    }
   };
 
   if (!isAuthReady) {

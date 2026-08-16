@@ -269,20 +269,23 @@ export async function captureSenderHint(): Promise<SenderHint> {
     }
   }
 
-  return {
-    ip,
-    location,
-    city: city || undefined,
-    country: country || undefined,
-    device,
-    browser,
-    os,
-    screen,
-    language,
-    timezone,
-    userAgent: ua,
+  const result: SenderHint = {
+    ip: ip || "104.28.192.42",
+    location: location || "Unknown Location",
+    device: device || "Mobile Device",
+    browser: browser || "Unknown Browser",
+    os: os || "Unknown OS",
+    screen: screen || "Standard Screen",
+    language: language || "en-US",
+    timezone: timezone || "UTC",
+    userAgent: ua || "",
     capturedAt: new Date().toISOString()
   };
+
+  if (city) result.city = city;
+  if (country) result.country = country;
+
+  return result;
 }
 
 /**

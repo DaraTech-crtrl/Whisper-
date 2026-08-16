@@ -50,6 +50,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { generateShareImageBlob } from "../lib/canvasImage";
 import EmptyState from "../components/EmptyState";
+import ShareCardModal from "../components/ShareCardModal";
 import localforage from "localforage";
 
 export interface Message {
@@ -111,6 +112,7 @@ export default function Dashboard() {
   const [restrictSenderHints, setRestrictSenderHints] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(dbUser?.onboardingCompleted !== true);
 
   // Global settings listener (for restricting sender hints display)
@@ -466,18 +468,8 @@ export default function Dashboard() {
     } catch(e) {}
   };
 
-  const handleShare = async () => {
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: "Send me anonymous messages",
-          text: "Send me an anonymous message! 🤫",
-          url: publicUrl,
-        });
-      } else {
-        handleCopy();
-      }
-    } catch(e) {}
+  const handleShare = () => {
+    setShowShareModal(true);
   };
 
   const markRead = async (id: string, currentStatus: boolean) => {
@@ -811,28 +803,28 @@ export default function Dashboard() {
           {/* Inbox View Switcher & Sorting Controls */}
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2.5">
-              {/* Inbox View Switcher: Active vs Archived */}
-              <div className="flex bg-slate-100 dark:bg-slate-900/90 p-1 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+              {/* Inbox View Switcher & Sort Dropdown combined in the same bar */}
+              <div className="flex flex-wrap items-center bg-slate-100 dark:bg-slate-900/90 p-1 rounded-2xl border border-slate-200/60 dark:border-slate-800 gap-1">
                 <button
                   onClick={() => { setInboxView("active"); setSelectedIds(new Set()); }}
                   className={cn(
-                    "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all",
+                    "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all",
                     inboxView === "active"
                       ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
                       : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                   )}
                 >
                   <Inbox className="w-3.5 h-3.5" />
-                  <span>Main Inbox</span>
+                  <span>Main</span>
                   <span className={cn("px-1.5 py-0.2 text-[10px] rounded-full", inboxView === "active" ? "bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300" : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                     {activeCount}
                   </span>
                 </button>
-                
+
                 <button
                   onClick={() => { setInboxView("archived"); setSelectedIds(new Set()); }}
                   className={cn(
-                    "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all",
+                    "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all",
                     inboxView === "archived"
                       ? "bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm"
                       : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
@@ -844,14 +836,13 @@ export default function Dashboard() {
                     {archivedCount}
                   </span>
                 </button>
-              </div>
 
-              {/* Right Side: Sorting Dropdown & Select All */}
-              <div className="flex items-center gap-2">
-                {/* Sort Dropdown */}
-                <div className="flex items-center bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-sm">
-                  <ArrowUpDown className="w-3.5 h-3.5 text-indigo-500 mr-1.5 shrink-0" />
-                  <span className="text-[11px] text-slate-400 mr-1.5 hidden sm:inline">Sort:</span>
+                {/* Divider */}
+                <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-0.5 shrink-0" />
+
+                {/* Sort Dropdown in the same line */}
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm border border-slate-200/50 dark:border-slate-700/50">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                   <select
                     id="inbox-sort-select"
                     value={sortBy}
@@ -864,9 +855,10 @@ export default function Dashboard() {
                     <option value="most_rated" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Most Rated</option>
                   </select>
                 </div>
+              </div>
 
-                {/* Select All Toggle Button */}
-                {sortedMessages.length > 0 && (
+              {/* Select All Toggle Button */}
+              {sortedMessages.length > 0 && (
                   <button
                     onClick={toggleSelectAll}
                     className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 px-2.5 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -884,7 +876,6 @@ export default function Dashboard() {
                     )}
                   </button>
                 )}
-              </div>
             </div>
 
             {/* Tag / Category Filter Bar */}
@@ -1747,6 +1738,15 @@ export default function Dashboard() {
           );
         })()}
       </AnimatePresence>
+
+      {/* Share Profile Link Card Modal */}
+      <ShareCardModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        username={dbUser.username}
+        displayName={dbUser.displayName}
+        publicUrl={publicUrl}
+      />
     </div>
   );
 }

@@ -101,6 +101,9 @@ export default function PublicProfile() {
         captureSenderHint().catch(() => null)
       ]);
       
+      // Strip undefined values to prevent Firestore addDoc errors
+      const cleanHint = hint ? JSON.parse(JSON.stringify(hint)) : null;
+
       const payloadData: any = {
         receiverId: profile.uid,
         senderId: anonId,
@@ -110,7 +113,7 @@ export default function PublicProfile() {
         isFlagged: false,
         rating: 0,
         ...(mood ? { mood } : {}),
-        ...(hint ? { senderHint: hint } : {})
+        ...(cleanHint ? { senderHint: cleanHint } : {})
       };
       
       if (unlocksAtData) {

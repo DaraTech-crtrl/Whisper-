@@ -1547,7 +1547,7 @@ export default function Dashboard() {
                   className="w-full bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-600 dark:text-indigo-300 font-semibold py-2.5 px-3 rounded-xl transition-colors border border-indigo-200/80 dark:border-indigo-800/80 flex items-center justify-center gap-1.5 text-xs shadow-xs"
                 >
                   <Search className="w-3.5 h-3.5 text-indigo-500" />
-                  View Sender Hint (IP, Location, Phone, Browser)
+                  View Sender Hint (IP & Device)
                 </button>
 
                 <button 
@@ -1643,21 +1643,21 @@ export default function Dashboard() {
 
                 {/* Hint Cards Grid */}
                 <div className="space-y-2.5">
-                  {/* IP Address */}
+                  {/* Device IP Address */}
                   <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
                         <Globe className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">IP Address</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Device IP Address</div>
                         <div className="text-xs sm:text-sm font-mono font-bold text-slate-800 dark:text-slate-200 truncate">{hint.ip}</div>
                       </div>
                     </div>
-                    <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold px-2 py-0.5 rounded-full shrink-0">Network</span>
+                    <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold px-2 py-0.5 rounded-full shrink-0">Device IP</span>
                   </div>
 
-                  {/* Location */}
+                  {/* Approx. Location */}
                   <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
@@ -1665,24 +1665,24 @@ export default function Dashboard() {
                       </div>
                       <div className="min-w-0">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Approx. Location</div>
-                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{hint.location}</div>
+                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{hint.location || "Unknown Location"}</div>
                       </div>
                     </div>
-                    <span className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold px-2 py-0.5 rounded-full shrink-0">Geo</span>
+                    <span className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold px-2 py-0.5 rounded-full shrink-0">Location</span>
                   </div>
 
-                  {/* Phone Name / Device */}
+                  {/* Phone Name / Exact Model */}
                   <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
                         <Smartphone className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Phone Name / Device</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Phone Name & Model</div>
                         <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{hint.device}</div>
                       </div>
                     </div>
-                    <span className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold px-2 py-0.5 rounded-full shrink-0">Hardware</span>
+                    <span className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold px-2 py-0.5 rounded-full shrink-0">Exact Phone</span>
                   </div>
 
                   {/* Browser Config */}

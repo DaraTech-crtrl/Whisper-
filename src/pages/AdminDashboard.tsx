@@ -61,6 +61,7 @@ import {
 import { db } from "../lib/firebase";
 import { getAssetUrl } from "../lib/assets";
 import { motion, AnimatePresence } from "motion/react";
+import UserAvatar from "../components/UserAvatar";
 
 const ADMIN_PASSKEY = "Akin$sola@2020";
 const SESSION_STORAGE_KEY = "whisper_admin_authenticated";
@@ -69,6 +70,8 @@ export interface UserProfileData {
   uid: string;
   username: string;
   displayName?: string;
+  photoURL?: string;
+  avatarUrl?: string;
   email?: string;
   emailLower?: string;
   bio?: string;
@@ -1056,9 +1059,13 @@ export default function AdminDashboard() {
                             
                             <td className="p-4">
                               <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center font-bold text-white uppercase text-sm shrink-0 shadow-sm">
-                                  {user.username ? user.username.charAt(0) : "U"}
-                                </div>
+                                <UserAvatar
+                                  photoURL={user.photoURL}
+                                  avatarUrl={user.avatarUrl}
+                                  name={user.displayName}
+                                  username={user.username}
+                                  size="sm"
+                                />
                                 <div>
                                   <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                                     <span>@{user.username || "unnamed"}</span>
@@ -1481,9 +1488,13 @@ export default function AdminDashboard() {
             >
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-base">
-                    {selectedUser.username ? selectedUser.username.charAt(0).toUpperCase() : "U"}
-                  </div>
+                  <UserAvatar
+                    photoURL={selectedUser.photoURL}
+                    avatarUrl={selectedUser.avatarUrl}
+                    name={selectedUser.displayName}
+                    username={selectedUser.username}
+                    size="md"
+                  />
                   <div>
                     <h3 className="font-bold text-base text-slate-900 dark:text-white">@{selectedUser.username || "unnamed"}</h3>
                     <p className="text-xs text-slate-400">{selectedUser.displayName || "No Display Name"}</p>

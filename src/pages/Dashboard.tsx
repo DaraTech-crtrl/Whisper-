@@ -40,8 +40,12 @@ import {
   Smartphone,
   Monitor,
   Search,
-  Info
+  Info,
+  Camera,
+  Upload
 } from "lucide-react";
+import UserAvatar from "../components/UserAvatar";
+import { uploadToCloudinary } from "../lib/cloudinary";
 import { SenderHint, getFallbackSenderHint, formatDisplayDevice } from "../lib/senderHint";
 import { formatDistanceToNow, differenceInHours } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
@@ -103,9 +107,79 @@ export default function Dashboard() {
   const [displayName, setDisplayName] = useState(dbUser?.displayName || "");
   const [bio, setBio] = useState(dbUser?.bio || "");
   const [theme, setTheme] = useState(dbUser?.theme || "default");
+  const [avatarUrl, setAvatarUrl] = useState<string>(dbUser?.photoURL || dbUser?.avatarUrl || "");
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [messageExpiryHours, setMessageExpiryHours] = useState<number>(dbUser?.messageExpiryHours || 0);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState({ text: "", type: "" });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (dbUser) {
+      if (!displayName && dbUser.displayName) setDisplayName(dbUser.displayName);
+      if (!bio && dbUser.bio) setBio(dbUser.bio);
+      if (!avatarUrl && (dbUser.photoURL || dbUser.avatarUrl)) setAvatarUrl(dbUser.photoURL || dbUser.avatarUrl || "");
+    }
+  }, [dbUser]);
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setProfileMessage({ text: "Please select a valid image file (PNG, JPG, WEBP).", type: "error" });
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setProfileMessage({ text: "Image file size must be less than 8MB.", type: "error" });
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    setProfileMessage({ text: "Processing & uploading profile picture...", type: "info" });
+
+    try {
+      const uploadedUrl = await uploadToCloudinary(file);
+      setAvatarUrl(uploadedUrl);
+
+      if (user?.uid) {
+        await updateDoc(doc(db, "users", user.uid), {
+          photoURL: uploadedUrl,
+          avatarUrl: uploadedUrl,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      setProfileMessage({ text: "Profile picture updated successfully!", type: "success" });
+    } catch (err: any) {
+      console.error("Cloudinary upload failed:", err);
+      setProfileMessage({ text: err.message || "Failed to upload image. Please try again.", type: "error" });
+    } finally {
+      setIsUploadingAvatar(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setAvatarUrl("");
+    setProfileMessage({ text: "Removing profile picture...", type: "info" });
+    try {
+      if (user?.uid) {
+        await updateDoc(doc(db, "users", user.uid), {
+          photoURL: null,
+          avatarUrl: null,
+          updatedAt: serverTimestamp()
+        });
+      }
+      setProfileMessage({ text: "Profile picture removed.", type: "success" });
+    } catch (err: any) {
+      console.error("Failed to remove avatar:", err);
+      setProfileMessage({ text: getFriendlyErrorMessage(err), type: "error" });
+    }
+  };
   
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [activeHintMsg, setActiveHintMsg] = useState<Message | null>(null);
@@ -532,6 +606,8 @@ export default function Dashboard() {
       const updates: any = {
         displayName: displayName,
         bio: bio,
+        photoURL: avatarUrl || null,
+        avatarUrl: avatarUrl || null,
         theme: theme,
         messageExpiryHours: newExpiry,
         updatedAt: serverTimestamp()
@@ -1343,6 +1419,69 @@ export default function Dashboard() {
             </div>
             
             <form onSubmit={handleUpdateProfile} className="space-y-4">
+              {/* Profile Picture Upload Section */}
+              <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                <div className="relative group shrink-0">
+                  <UserAvatar
+                    photoURL={avatarUrl}
+                    avatarUrl={avatarUrl}
+                    name={displayName || dbUser?.displayName}
+                    username={dbUser?.username}
+                    size="xl"
+                    showBorder
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingAvatar}
+                    className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                    title="Change Profile Picture"
+                  >
+                    <Camera className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="flex-1 text-center sm:text-left space-y-1.5">
+                  <label className="block text-sm font-bold text-slate-800 dark:text-slate-200">
+                    Profile Picture
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Upload a custom photo for your secret page & story share cards. Stored securely on Cloudinary.
+                  </p>
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleAvatarFileChange}
+                    accept="image/png, image/jpeg, image/webp, image/gif"
+                    className="hidden"
+                  />
+
+                  <div className="flex items-center justify-center sm:justify-start gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingAvatar}
+                      className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-60 cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {isUploadingAvatar ? "Uploading..." : avatarUrl ? "Change Photo" : "Upload Photo"}
+                    </button>
+
+                    {avatarUrl && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveAvatar}
+                        disabled={isUploadingAvatar}
+                        className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-rose-500/10 hover:text-rose-600 text-slate-600 dark:text-slate-400 text-xs font-medium transition-colors cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1.5 pl-1 text-slate-700 dark:text-slate-300">Display Name</label>
                 <div className="relative">
@@ -1745,6 +1884,8 @@ export default function Dashboard() {
         onClose={() => setShowShareModal(false)}
         username={dbUser.username}
         displayName={dbUser.displayName}
+        photoURL={dbUser.photoURL || avatarUrl}
+        avatarUrl={dbUser.avatarUrl || avatarUrl}
         publicUrl={publicUrl}
       />
     </div>

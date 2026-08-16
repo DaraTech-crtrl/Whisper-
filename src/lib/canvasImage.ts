@@ -8,6 +8,8 @@ export interface ProfileShareCardOptions {
   headline?: string;
   subheadline?: string;
   qrCodeDataUrl?: string;
+  photoURL?: string | null;
+  avatarUrl?: string | null;
 }
 
 export async function generateProfileShareCard(options: ProfileShareCardOptions): Promise<{ blob: Blob; dataUrl: string }> {
@@ -15,7 +17,9 @@ export async function generateProfileShareCard(options: ProfileShareCardOptions)
     username,
     displayName,
     theme = "obsidian",
-    headline = "send me anonymous messages! 🤫"
+    headline = "send me anonymous messages! 🤫",
+    photoURL,
+    avatarUrl
   } = options;
 
   const canvas = document.createElement("canvas");
@@ -26,6 +30,10 @@ export async function generateProfileShareCard(options: ProfileShareCardOptions)
   if (!ctx) {
     throw new Error("Canvas 2D context not available");
   }
+
+  // Ensure high quality crisp text and image smoothing
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   // Theme palettes configuration
   const themeConfigs: Record<ProfileCardTheme, {
@@ -209,10 +217,11 @@ export async function generateProfileShareCard(options: ProfileShareCardOptions)
   if (rawHeadline.length > 80) fontSize = 38;
   else if (rawHeadline.length > 50) fontSize = 44;
 
-  ctx.font = `900 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  ctx.font = `900 ${fontSize}px "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
   ctx.fillStyle = "#ffffff";
-  ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-  ctx.shadowBlur = 16;
+  ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
 
   const wrappedHeadline = wrapText(ctx, rawHeadline, boxW - 80);
   const totalTextH = wrappedHeadline.length * (fontSize * 1.25);
@@ -230,27 +239,70 @@ export async function generateProfileShareCard(options: ProfileShareCardOptions)
 
   // Avatar Circle
   const avatarRadius = 40;
-  ctx.save();
-  ctx.shadowColor = palette.accentText;
-  ctx.shadowBlur = 20;
+  const avatarCenterX = 540;
+  const avatarCenterY = profileCenterY - 30;
 
-  const avGrad = ctx.createLinearGradient(540 - avatarRadius, profileCenterY - avatarRadius, 540 + avatarRadius, profileCenterY + avatarRadius);
-  avGrad.addColorStop(0, palette.neonStrokes[0]);
-  avGrad.addColorStop(1, palette.neonStrokes[1]);
-  ctx.fillStyle = avGrad;
-  ctx.beginPath();
-  ctx.arc(540, profileCenterY - 30, avatarRadius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  const avatarImgSrc = photoURL || avatarUrl;
+  let loadedAvatarImg: HTMLImageElement | null = null;
 
-  // Initial
-  ctx.save();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `900 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(initial, 540, profileCenterY - 28);
-  ctx.restore();
+  if (avatarImgSrc) {
+    try {
+      loadedAvatarImg = await new Promise<HTMLImageElement | null>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = avatarImgSrc;
+      });
+    } catch {
+      loadedAvatarImg = null;
+    }
+  }
+
+  if (loadedAvatarImg) {
+    ctx.save();
+    ctx.shadowColor = palette.accentText;
+    ctx.shadowBlur = 12;
+
+    // Glowing outer ring border
+    const avGrad = ctx.createLinearGradient(avatarCenterX - avatarRadius - 3, avatarCenterY - avatarRadius - 3, avatarCenterX + avatarRadius + 3, avatarCenterY + avatarRadius + 3);
+    avGrad.addColorStop(0, palette.neonStrokes[0]);
+    avGrad.addColorStop(1, palette.neonStrokes[1]);
+    ctx.strokeStyle = avGrad;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(avatarCenterX, avatarCenterY, avatarRadius + 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Clip image inside circle
+    ctx.beginPath();
+    ctx.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(loadedAvatarImg, avatarCenterX - avatarRadius, avatarCenterY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
+    ctx.restore();
+  } else {
+    // Fallback: Gradient Circle & Initial
+    ctx.save();
+    ctx.shadowColor = palette.accentText;
+    ctx.shadowBlur = 20;
+
+    const avGrad = ctx.createLinearGradient(540 - avatarRadius, profileCenterY - avatarRadius, 540 + avatarRadius, profileCenterY + avatarRadius);
+    avGrad.addColorStop(0, palette.neonStrokes[0]);
+    avGrad.addColorStop(1, palette.neonStrokes[1]);
+    ctx.fillStyle = avGrad;
+    ctx.beginPath();
+    ctx.arc(540, profileCenterY - 30, avatarRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `900 36px "Plus Jakarta Sans", "Inter", -apple-system, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(initial, 540, profileCenterY - 28);
+    ctx.restore();
+  }
 
   // Username
   ctx.save();

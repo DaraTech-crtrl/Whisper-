@@ -18,6 +18,7 @@ import { auth, db } from "../lib/firebase";
 import { useAuthStore } from "../lib/store";
 import { generateKeyPair, wrapPrivateKey, unwrapPrivateKey } from "../lib/crypto";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
+import UserAvatar from "../components/UserAvatar";
 import { getAssetUrl } from "../lib/assets";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -515,9 +516,14 @@ export default function Home() {
             className="w-full max-w-sm flex flex-col items-center text-center px-1"
           >
             <div className="relative mb-5">
-              <div className="w-20 h-20 bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 rounded-3xl flex items-center justify-center shadow-xl shadow-indigo-500/20 text-white text-3xl font-bold">
-                {dbUser?.displayName?.charAt(0).toUpperCase() || dbUser?.username?.charAt(0).toUpperCase() || "W"}
-              </div>
+              <UserAvatar
+                photoURL={dbUser?.photoURL}
+                avatarUrl={dbUser?.avatarUrl}
+                name={dbUser?.displayName}
+                username={dbUser?.username}
+                size="xl"
+                className="shadow-xl shadow-indigo-500/20"
+              />
               <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-slate-900 dark:bg-slate-950 border-2 border-white dark:border-slate-800 flex items-center justify-center shadow text-indigo-400">
                 <Lock className="w-3.5 h-3.5" />
               </div>

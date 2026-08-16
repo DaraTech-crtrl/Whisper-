@@ -8,6 +8,8 @@ interface ShareCardModalProps {
   onClose: () => void;
   username: string;
   displayName?: string;
+  photoURL?: string | null;
+  avatarUrl?: string | null;
   publicUrl: string;
 }
 
@@ -39,6 +41,8 @@ export default function ShareCardModal({
   onClose,
   username,
   displayName,
+  photoURL,
+  avatarUrl,
   publicUrl
 }: ShareCardModalProps) {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -90,6 +94,8 @@ export default function ShareCardModal({
         const { blob, dataUrl } = await generateProfileShareCard({
           username,
           displayName,
+          photoURL,
+          avatarUrl,
           publicUrl,
           theme: currentTheme,
           headline: currentCard.headline
@@ -114,7 +120,7 @@ export default function ShareCardModal({
       isMounted = false;
       clearTimeout(t);
     };
-  }, [isOpen, activeIndex, cardThemes, renderedCache, username, displayName, publicUrl]);
+  }, [isOpen, activeIndex, cardThemes, renderedCache, username, displayName, photoURL, avatarUrl, publicUrl]);
 
   // Pre-render adjacent cards in background for seamless swiping
   useEffect(() => {
@@ -133,6 +139,8 @@ export default function ShareCardModal({
         generateProfileShareCard({
           username,
           displayName,
+          photoURL,
+          avatarUrl,
           publicUrl,
           theme: cardTheme,
           headline: cardConfig.headline
@@ -144,7 +152,7 @@ export default function ShareCardModal({
         }).catch(() => {});
       }
     });
-  }, [isOpen, activeIndex, cardThemes, renderedCache, username, displayName, publicUrl]);
+  }, [isOpen, activeIndex, cardThemes, renderedCache, username, displayName, photoURL, avatarUrl, publicUrl]);
 
   const handlePrev = () => {
     setSlideDirection(-1);
@@ -223,20 +231,20 @@ export default function ShareCardModal({
 
     try {
       const file = new File([currentCache.blob], `whisper-card-${username}-${activeIndex + 1}.png`, { type: "image/png" });
-      const shareText = `Send me an anonymous message! 🤫\n\n${publicUrl}`;
+      const currentCardHeadline = PREFILLED_CARDS[activeIndex]?.headline || "send me anonymous messages! 🤫";
 
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: "Send me anonymous messages!",
-          text: shareText,
+          title: currentCardHeadline,
+          text: currentCardHeadline,
           url: publicUrl
         });
         showToast("Shared active card successfully!");
       } else if (navigator.share) {
         await navigator.share({
-          title: "Send me anonymous messages!",
-          text: shareText,
+          title: currentCardHeadline,
+          text: currentCardHeadline,
           url: publicUrl
         });
       } else {

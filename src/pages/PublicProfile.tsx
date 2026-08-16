@@ -8,6 +8,7 @@ import { captureSenderHint } from "../lib/senderHint";
 import { Send, CheckCircle2, AlertTriangle, Lock, Award, Watch } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import LoadingScreen from "../components/LoadingScreen";
+import UserAvatar from "../components/UserAvatar";
 
 export default function PublicProfile() {
   const { username } = useParams<{ username: string }>();
@@ -175,9 +176,14 @@ export default function PublicProfile() {
             className={`bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xl border border-slate-100 dark:border-slate-800 backdrop-blur-lg ${profile.theme && profile.theme !== 'default' ? 'bg-white/90 dark:bg-slate-900/90' : ''}`}
           >
             <div className="flex flex-col items-center mb-6 text-center text-slate-900 dark:text-white">
-              <div className="w-16 h-16 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-full flex items-center justify-center mb-4 text-white shadow-lg text-2xl font-bold">
-                {profile.displayName?.charAt(0).toUpperCase() || profile.username.charAt(0).toUpperCase()}
-              </div>
+              <UserAvatar
+                photoURL={profile.photoURL}
+                avatarUrl={profile.avatarUrl}
+                name={profile.displayName}
+                username={profile.username}
+                size="xl"
+                className="mb-4 shadow-lg"
+              />
               <h1 className="text-xl font-bold">{profile.displayName || `@${profile.username}`}</h1>
               {profile.bio && (
                 <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 px-2 break-words">

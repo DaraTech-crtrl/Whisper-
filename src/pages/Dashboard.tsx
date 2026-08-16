@@ -42,7 +42,7 @@ import {
   Search,
   Info
 } from "lucide-react";
-import { SenderHint, getFallbackSenderHint } from "../lib/senderHint";
+import { SenderHint, getFallbackSenderHint, formatDisplayDevice } from "../lib/senderHint";
 import { formatDistanceToNow, differenceInHours } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -108,9 +108,23 @@ export default function Dashboard() {
   
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [activeHintMsg, setActiveHintMsg] = useState<Message | null>(null);
+  const [restrictSenderHints, setRestrictSenderHints] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(dbUser?.onboardingCompleted !== true);
+
+  // Global settings listener (for restricting sender hints display)
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "systemSettings", "global"), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setRestrictSenderHints(!!data.restrictSenderHints);
+      }
+    }, (err) => {
+      console.warn("Could not fetch global settings for hints:", err);
+    });
+    return () => unsub();
+  }, []);
   
   const QUICK_REACTIONS = ['❤️', '🔥', '😂', '😲', '🥺', '🙏'];
 
@@ -1151,18 +1165,20 @@ export default function Dashboard() {
                           <span className="text-sm animate-in zoom-in mr-1">{msg.reaction}</span>
                         )}
 
-                        {/* Hint Action Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveHintMsg(msg);
-                          }}
-                          className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 p-1.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors flex items-center gap-1 font-bold text-xs"
-                          title="View Sender Hint (IP, Location, Device)"
-                        >
-                          <Search className="w-3.5 h-3.5 text-indigo-500" />
-                          <span className="hidden sm:inline">Hint</span>
-                        </button>
+                        {/* Hint Action Button (Hidden when restricted by Admin) */}
+                        {!restrictSenderHints && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveHintMsg(msg);
+                            }}
+                            className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 p-1.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors flex items-center gap-1 font-bold text-xs"
+                            title="View Sender Hint (IP, Location, Device)"
+                          >
+                            <Search className="w-3.5 h-3.5 text-indigo-500" />
+                            <span className="hidden sm:inline">Hint</span>
+                          </button>
+                        )}
 
                         {/* Tag Menu Button on card */}
                         <div className="relative">
@@ -1603,9 +1619,9 @@ export default function Dashboard() {
         )}
       </AnimatePresence>
 
-      {/* Sender Hint Details Modal */}
+      {/* Sender Hint Details Modal (Suppressed if restricted globally) */}
       <AnimatePresence>
-        {activeHintMsg && (() => {
+        {activeHintMsg && !restrictSenderHints && (() => {
           const hint: SenderHint = activeHintMsg.senderHint || getFallbackSenderHint(activeHintMsg.senderId, activeHintMsg.id);
           return (
             <motion.div 
@@ -1679,7 +1695,7 @@ export default function Dashboard() {
                       </div>
                       <div className="min-w-0">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Phone Name & Model</div>
-                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{hint.device}</div>
+                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{formatDisplayDevice(hint)}</div>
                       </div>
                     </div>
                     <span className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold px-2 py-0.5 rounded-full shrink-0">Exact Phone</span>

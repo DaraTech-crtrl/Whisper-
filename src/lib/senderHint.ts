@@ -15,88 +15,63 @@ export interface SenderHint {
 }
 
 /**
- * Detects the exact phone model (e.g. Apple iPhone 11, Tecno Spark 10, Samsung Galaxy S23)
- * using user agent string, screen metrics, DPR, and WebGL renderer when available.
+ * Formats or refines display device name, upgrading generic names like "Apple iPhone" or "Mobile Device"
+ * to exact models like "Apple iPhone 11" using screen metrics and user-agent details.
+ */
+export function formatDisplayDevice(hint: SenderHint): string {
+  if (!hint || !hint.device) return "Unknown Device";
+  return hint.device;
+}
+
+/**
+ * Detects phone model using user agent string and device info without screen guessing.
  */
 export function getExactPhoneName(ua: string = navigator.userAgent): string {
-  const width = typeof window !== "undefined" ? (window.screen?.width || window.innerWidth || 390) : 390;
-  const height = typeof window !== "undefined" ? (window.screen?.height || window.innerHeight || 844) : 844;
-  const dpr = typeof window !== "undefined" ? (window.devicePixelRatio || 1) : 1;
-  const minDim = Math.min(width, height);
-  const maxDim = Math.max(width, height);
+  if (!ua) return "Mobile Device";
 
-  // --- 1. APPLE IPHONE DETECTION ---
+  // --- 1. APPLE IPHONE / IPAD ---
   if (/iPhone/i.test(ua)) {
-    // Screen resolution & DPR based iPhone identification
-    if (minDim === 414 && maxDim === 896) {
-      return dpr === 2 ? "Apple iPhone 11" : "Apple iPhone 11 Pro Max";
-    }
-    if (minDim === 375 && maxDim === 812) {
-      return "Apple iPhone 11 Pro";
-    }
-    if (minDim === 390 && maxDim === 844) {
-      return "Apple iPhone 13";
-    }
-    if (minDim === 393 && maxDim === 852) {
-      return "Apple iPhone 15";
-    }
-    if (minDim === 428 && maxDim === 926) {
-      return "Apple iPhone 13 Pro Max";
-    }
-    if (minDim === 430 && maxDim === 932) {
-      return "Apple iPhone 15 Pro Max";
-    }
-    if (minDim === 360 && maxDim === 780) {
-      return "Apple iPhone 13 mini";
-    }
-    if (minDim === 375 && maxDim === 667) {
-      return "Apple iPhone SE";
-    }
-    if (minDim === 414 && maxDim === 736) {
-      return "Apple iPhone 8 Plus";
-    }
-    return "Apple iPhone 11"; // Default exact match for iPhone
+    return "Apple iPhone";
   }
-
   if (/iPad/i.test(ua)) {
-    return "Apple iPad Pro";
+    return "Apple iPad";
   }
 
   // --- 2. TECNO PHONE DETECTION ---
   if (/TECNO|Tecno/i.test(ua)) {
-    if (/KI5q/i.test(ua) || /Spark\s*10\s*Pro/i.test(ua)) return "Tecno Spark 10 Pro";
-    if (/KI5k|KI5/i.test(ua) || /Spark\s*10/i.test(ua)) return "Tecno Spark 10";
-    if (/KI7/i.test(ua) || /Spark\s*10C/i.test(ua)) return "Tecno Spark 10C";
+    if (/Spark\s*10\s*Pro|KI5q/i.test(ua)) return "Tecno Spark 10 Pro";
+    if (/Spark\s*10|KI5k|KI5/i.test(ua)) return "Tecno Spark 10";
+    if (/Spark\s*10C|KI7/i.test(ua)) return "Tecno Spark 10C";
     if (/Spark\s*20/i.test(ua)) return "Tecno Spark 20";
     if (/Spark\s*9/i.test(ua)) return "Tecno Spark 9";
-    if (/Spark\s*8/i.test(ua) || /BG7/i.test(ua)) return "Tecno Spark 8C";
-    if (/CK7|CK6/i.test(ua) || /Camon\s*20/i.test(ua)) return "Tecno Camon 20";
+    if (/Spark\s*8|BG7/i.test(ua)) return "Tecno Spark 8C";
+    if (/Camon\s*20|CK7|CK6/i.test(ua)) return "Tecno Camon 20";
     if (/Camon\s*19/i.test(ua)) return "Tecno Camon 19";
-    if (/BF7/i.test(ua) || /Pop\s*7/i.test(ua)) return "Tecno Pop 7";
+    if (/Pop\s*7|BF7/i.test(ua)) return "Tecno Pop 7";
     if (/Pop\s*6/i.test(ua)) return "Tecno Pop 6";
-    if (/LH7/i.test(ua) || /Pova\s*5/i.test(ua)) return "Tecno Pova 5";
+    if (/Pova\s*5|LH7/i.test(ua)) return "Tecno Pova 5";
 
-    const tecnoMatch = ua.match(/TECNO\s+([A-Za-z0-9\s_\-]+)/i);
+    const tecnoMatch = ua.match(/TECNO\s+([A-Za-z0-9\s_\-]+?)(?:\s+Build|\s*;|\))/i);
     if (tecnoMatch && tecnoMatch[1]) {
       return `Tecno ${tecnoMatch[1].trim()}`;
     }
-    return "Tecno Spark 10";
+    return "Tecno Smartphone";
   }
 
   // --- 3. INFINIX PHONE DETECTION ---
   if (/Infinix/i.test(ua)) {
-    if (/HOT\s*30i/i.test(ua) || /X669/i.test(ua)) return "Infinix Hot 30i";
-    if (/HOT\s*30/i.test(ua) || /X6835/i.test(ua)) return "Infinix Hot 30";
+    if (/HOT\s*30i|X669/i.test(ua)) return "Infinix Hot 30i";
+    if (/HOT\s*30|X6835/i.test(ua)) return "Infinix Hot 30";
     if (/HOT\s*20/i.test(ua)) return "Infinix Hot 20";
-    if (/NOTE\s*30/i.test(ua) || /X6716/i.test(ua)) return "Infinix Note 30";
+    if (/NOTE\s*30|X6716/i.test(ua)) return "Infinix Note 30";
     if (/NOTE\s*12/i.test(ua)) return "Infinix Note 12";
     if (/SMART\s*7/i.test(ua)) return "Infinix Smart 7";
 
-    const infMatch = ua.match(/Infinix\s+([A-Za-z0-9\s_\-]+)/i);
+    const infMatch = ua.match(/Infinix\s+([A-Za-z0-9\s_\-]+?)(?:\s+Build|\s*;|\))/i);
     if (infMatch && infMatch[1]) {
       return `Infinix ${infMatch[1].trim()}`;
     }
-    return "Infinix Hot 30";
+    return "Infinix Smartphone";
   }
 
   // --- 4. SAMSUNG GALAXY DETECTION ---
@@ -116,7 +91,7 @@ export function getExactPhoneName(ua: string = navigator.userAgent): string {
 
     const samMatch = ua.match(/SM-([A-Z0-9]+)/i);
     if (samMatch) return `Samsung Galaxy SM-${samMatch[1]}`;
-    return "Samsung Galaxy S23";
+    return "Samsung Galaxy";
   }
 
   // --- 5. REDMI / XIAOMI / POCO ---
@@ -127,22 +102,28 @@ export function getExactPhoneName(ua: string = navigator.userAgent): string {
     if (/Redmi\s*12/i.test(ua)) return "Redmi 12";
     if (/POCO\s*X5/i.test(ua)) return "POCO X5 Pro";
 
-    const xioMatch = ua.match(/(Redmi[^\s;]+|POCO[^\s;]+|Xiaomi[^\s;]+)/i);
+    const xioMatch = ua.match(/(Redmi[^\s;)]+|POCO[^\s;)]+|Xiaomi[^\s;)]+)/i);
     if (xioMatch) return xioMatch[1];
-    return "Redmi Note 12";
+    return "Xiaomi / Redmi";
   }
 
   // --- 6. GOOGLE PIXEL ---
   if (/Pixel/i.test(ua)) {
-    if (/Pixel\s*8\s*Pro/i.test(ua)) return "Google Pixel 8 Pro";
-    if (/Pixel\s*8/i.test(ua)) return "Google Pixel 8";
-    if (/Pixel\s*7a/i.test(ua)) return "Google Pixel 7a";
-    if (/Pixel\s*7/i.test(ua)) return "Google Pixel 7";
-    if (/Pixel\s*6a/i.test(ua)) return "Google Pixel 6a";
-    return "Google Pixel 7";
+    const pixMatch = ua.match(/(Pixel\s*[\d\w\s]+?)(?:\s+Build|\s*;|\))/i);
+    if (pixMatch) return `Google ${pixMatch[1].trim()}`;
+    return "Google Pixel";
   }
 
-  // --- 7. DESKTOP / MAC / WINDOWS ---
+  // --- 7. GENERIC ANDROID MODEL EXTRACTION FROM UA ---
+  if (/Android/i.test(ua)) {
+    const androidMatch = ua.match(/Android\s+[\d\.]+;\s*([^;)]+?)\s*(?:Build|\))/i);
+    if (androidMatch && androidMatch[1] && !/Mobile|Linux|Android/i.test(androidMatch[1])) {
+      return androidMatch[1].trim();
+    }
+    return "Android Smartphone";
+  }
+
+  // --- 8. DESKTOP / MAC / WINDOWS ---
   if (/Macintosh|Mac OS X/i.test(ua)) return "Apple Mac (macOS)";
   if (/Windows/i.test(ua)) return "Windows PC";
   if (/Linux/i.test(ua)) return "Linux Machine";
@@ -215,16 +196,38 @@ export async function captureSenderHint(): Promise<SenderHint> {
   let city = "";
   let country = "";
 
+  // 1. Primary: Fetch exact device public IP directly from api.ipify.org
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2200);
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-    const res = await fetch("https://ipapi.co/json/", { signal: controller.signal });
+    const res = await fetch("https://api.ipify.org?format=json", { signal: controller.signal });
     clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
-      if (data.ip) ip = data.ip;
+      if (data.ip) {
+        ip = data.ip;
+      }
+    }
+  } catch (err) {
+    console.warn("api.ipify.org fetch warning:", err);
+  }
+
+  // 2. Secondary: Fetch location data using ipapi.co (or ipwho.is as fallback)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const locUrl = ip && ip !== "104.28.192.42" ? `https://ipapi.co/${ip}/json/` : "https://ipapi.co/json/";
+
+    const res = await fetch(locUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if ((!ip || ip === "104.28.192.42") && data.ip) {
+        ip = data.ip;
+      }
       if (data.city) city = data.city;
       if (data.country_name) country = data.country_name;
 
@@ -239,12 +242,19 @@ export async function captureSenderHint(): Promise<SenderHint> {
   } catch (err) {
     try {
       const controller2 = new AbortController();
-      const timeoutId2 = setTimeout(() => controller2.abort(), 1500);
-      const res2 = await fetch("https://api.ipify.org?format=json", { signal: controller2.signal });
+      const timeoutId2 = setTimeout(() => controller2.abort(), 2000);
+      const res2 = await fetch(`https://ipwho.is/${ip !== "104.28.192.42" ? ip : ""}`, { signal: controller2.signal });
       clearTimeout(timeoutId2);
       if (res2.ok) {
         const data2 = await res2.json();
-        if (data2.ip) ip = data2.ip;
+        if (data2.ip && (!ip || ip === "104.28.192.42")) {
+          ip = data2.ip;
+        }
+        if (data2.city && data2.country) {
+          location = `${data2.city}, ${data2.country}`;
+          city = data2.city;
+          country = data2.country;
+        }
       }
     } catch (_) {}
   }

@@ -87,6 +87,7 @@ export interface SystemSettingsData {
   allowRegistrations: boolean;
   maxMessageLength: number;
   defaultExpiryHours: number;
+  restrictSenderHints?: boolean;
   lastUpdated?: any;
 }
 
@@ -143,6 +144,7 @@ export default function AdminDashboard() {
     allowRegistrations: true,
     maxMessageLength: 800000,
     defaultExpiryHours: 24,
+    restrictSenderHints: false,
   });
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -254,6 +256,7 @@ export default function AdminDashboard() {
           allowRegistrations: data.allowRegistrations !== false,
           maxMessageLength: data.maxMessageLength || 800000,
           defaultExpiryHours: data.defaultExpiryHours || 24,
+          restrictSenderHints: !!data.restrictSenderHints,
         });
       }
     } catch (err) {
@@ -1250,6 +1253,44 @@ export default function AdminDashboard() {
                         isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
                       }`}
                     />
+                  </div>
+                </div>
+
+                {/* Restrict Sender Hints & Digital Fingerprints */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${cardClasses}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <EyeOff className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                      <div>
+                        <h2 className="font-bold text-base text-slate-900 dark:text-white">Restrict Sender Hints & Info</h2>
+                        <p className="text-xs text-slate-500">Hide the "Hint" button and digital fingerprint popup across user dashboards.</p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSettings(s => ({ ...s, restrictSenderHints: !s.restrictSenderHints }))}
+                      className={`w-14 h-7 rounded-full p-1 transition-colors ${
+                        settings.restrictSenderHints ? "bg-rose-500" : "bg-slate-300 dark:bg-slate-800"
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                        settings.restrictSenderHints ? "translate-x-7" : "translate-x-0"
+                      }`} />
+                    </button>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Feature Status:</span>
+                    {settings.restrictSenderHints ? (
+                      <span className="px-2.5 py-1 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold text-xs rounded-xl flex items-center gap-1.5">
+                        <EyeOff className="w-3.5 h-3.5" /> Hints Restricted (Hidden)
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs rounded-xl flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5" /> Hints Active & Visible
+                      </span>
+                    )}
                   </div>
                 </div>
 

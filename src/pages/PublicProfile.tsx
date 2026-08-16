@@ -4,6 +4,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc
 import { db } from "../lib/firebase";
 import { encryptMessage } from "../lib/crypto";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
+import { captureSenderHint } from "../lib/senderHint";
 import { Send, CheckCircle2, AlertTriangle, Lock, Award, Watch } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import LoadingScreen from "../components/LoadingScreen";
@@ -95,7 +96,10 @@ export default function PublicProfile() {
 
     setIsSending(true);
     try {
-      const encrypted = await encryptMessage(profile.publicKey, message);
+      const [encrypted, hint] = await Promise.all([
+        encryptMessage(profile.publicKey, message),
+        captureSenderHint().catch(() => null)
+      ]);
       
       const payloadData: any = {
         receiverId: profile.uid,
@@ -105,7 +109,8 @@ export default function PublicProfile() {
         read: false,
         isFlagged: false,
         rating: 0,
-        ...(mood ? { mood } : {})
+        ...(mood ? { mood } : {}),
+        ...(hint ? { senderHint: hint } : {})
       };
       
       if (unlocksAtData) {

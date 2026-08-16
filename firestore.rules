@@ -107,6 +107,9 @@ service cloud.firestore {
         && (
           !('tag' in data) || (data.tag is string && data.tag.size() <= 64)
         )
+        && (
+          !('senderHint' in data) || (data.senderHint is map)
+        )
     }
 
     match /users/{userId}/messages/{messageId} {

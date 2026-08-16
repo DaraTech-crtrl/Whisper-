@@ -33,8 +33,16 @@ import {
   Mail,
   Filter,
   Plus,
-  ArrowUpDown
+  ArrowUpDown,
+  HelpCircle,
+  Globe,
+  MapPin,
+  Smartphone,
+  Monitor,
+  Search,
+  Info
 } from "lucide-react";
+import { SenderHint, getFallbackSenderHint } from "../lib/senderHint";
 import { formatDistanceToNow, differenceInHours } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
@@ -59,6 +67,7 @@ export interface Message {
   archived?: boolean;
   archivedAt?: any;
   tags?: string[];
+  senderHint?: SenderHint;
 }
 
 export type SortOption = "newest" | "oldest" | "most_rated";
@@ -98,6 +107,7 @@ export default function Dashboard() {
   const [profileMessage, setProfileMessage] = useState({ text: "", type: "" });
   
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [activeHintMsg, setActiveHintMsg] = useState<Message | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(dbUser?.onboardingCompleted !== true);
@@ -1119,6 +1129,20 @@ export default function Dashboard() {
                             Rep {rep > 0 ? '+' : ''}{rep}
                           </span>
                         )}
+
+                        {/* Hint Button Badge */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveHintMsg(msg);
+                          }}
+                          className="flex items-center gap-1 text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900/90 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 px-2 py-0.5 rounded-full transition-all shadow-2xs"
+                          title="View Sender Hint (IP, Location, Phone Name, Browser)"
+                        >
+                          <HelpCircle className="w-3 h-3 text-indigo-500" />
+                          <span>Hint</span>
+                        </button>
                       </div>
 
                       {/* Card Action Icons */}
@@ -1126,6 +1150,19 @@ export default function Dashboard() {
                         {msg.reaction && (
                           <span className="text-sm animate-in zoom-in mr-1">{msg.reaction}</span>
                         )}
+
+                        {/* Hint Action Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveHintMsg(msg);
+                          }}
+                          className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 p-1.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors flex items-center gap-1 font-bold text-xs"
+                          title="View Sender Hint (IP, Location, Device)"
+                        >
+                          <Search className="w-3.5 h-3.5 text-indigo-500" />
+                          <span className="hidden sm:inline">Hint</span>
+                        </button>
 
                         {/* Tag Menu Button on card */}
                         <div className="relative">
@@ -1503,6 +1540,17 @@ export default function Dashboard() {
               {/* Action Buttons */}
               <div className="flex flex-col gap-2 pt-1">
                 <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveHintMsg(selectedMessage);
+                  }}
+                  className="w-full bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-600 dark:text-indigo-300 font-semibold py-2.5 px-3 rounded-xl transition-colors border border-indigo-200/80 dark:border-indigo-800/80 flex items-center justify-center gap-1.5 text-xs shadow-xs"
+                >
+                  <Search className="w-3.5 h-3.5 text-indigo-500" />
+                  View Sender Hint (IP, Location, Phone, Browser)
+                </button>
+
+                <button 
                   onClick={shareToStatus}
                   disabled={isExporting}
                   className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60"
@@ -1553,6 +1601,135 @@ export default function Dashboard() {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Sender Hint Details Modal */}
+      <AnimatePresence>
+        {activeHintMsg && (() => {
+          const hint: SenderHint = activeHintMsg.senderHint || getFallbackSenderHint(activeHintMsg.senderId, activeHintMsg.id);
+          return (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
+              onClick={() => setActiveHintMsg(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                onClick={e => e.stopPropagation()}
+                className="w-full max-w-sm my-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col gap-4 max-h-[92dvh] overflow-y-auto"
+              >
+                {/* Modal Header */}
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                      <Search className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">Sender Hint & Info</h3>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Captured digital fingerprint & config</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setActiveHintMsg(null)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Hint Cards Grid */}
+                <div className="space-y-2.5">
+                  {/* IP Address */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+                        <Globe className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">IP Address</div>
+                        <div className="text-xs sm:text-sm font-mono font-bold text-slate-800 dark:text-slate-200 truncate">{hint.ip}</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold px-2 py-0.5 rounded-full shrink-0">Network</span>
+                  </div>
+
+                  {/* Location */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
+                        <MapPin className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Approx. Location</div>
+                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{hint.location}</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold px-2 py-0.5 rounded-full shrink-0">Geo</span>
+                  </div>
+
+                  {/* Phone Name / Device */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
+                        <Smartphone className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Phone Name / Device</div>
+                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{hint.device}</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold px-2 py-0.5 rounded-full shrink-0">Hardware</span>
+                  </div>
+
+                  {/* Browser Config */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                        <Monitor className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Browser Config</div>
+                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{hint.browser}</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">OS: {hint.os}</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold px-2 py-0.5 rounded-full shrink-0">Software</span>
+                  </div>
+
+                  {/* Screen & Locale */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Screen Config</div>
+                      <div className="font-semibold text-slate-700 dark:text-slate-300 font-mono text-[11px] mt-0.5 truncate">{hint.screen}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Timezone / Lang</div>
+                      <div className="font-semibold text-slate-700 dark:text-slate-300 text-[11px] mt-0.5 truncate">{hint.timezone}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {hint.isEstimated && (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs flex items-center gap-2">
+                    <Info className="w-4 h-4 shrink-0 text-amber-500" />
+                    <span>Legacy message: Showing estimated hint fingerprint.</span>
+                  </div>
+                )}
+
+                <button 
+                  onClick={() => setActiveHintMsg(null)}
+                  className="w-full bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-colors text-sm shadow-sm mt-1"
+                >
+                  Close Hint
+                </button>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );

@@ -23,17 +23,27 @@ function incrementPatchVersion(versionStr) {
 
 let rawVersion = '1.0.0';
 
-if (fs.existsSync(publicVersionPath)) {
+// Check if running inside GitHub Actions CI/CD pipeline
+if (process.env.GITHUB_RUN_NUMBER) {
+  const runNumber = parseInt(process.env.GITHUB_RUN_NUMBER, 10) || 1;
+  rawVersion = `1.0.${runNumber}`;
+  console.log(`[Version Generator] Detected GitHub Action Run #${runNumber}`);
+} else if (fs.existsSync(publicVersionPath)) {
   try {
     const existing = JSON.parse(fs.readFileSync(publicVersionPath, 'utf8'));
     if (existing && existing.rawVersion) {
       rawVersion = incrementPatchVersion(existing.rawVersion);
     } else if (existing && existing.version) {
       rawVersion = incrementPatchVersion(existing.version);
+    } else {
+      rawVersion = '1.0.1';
     }
   } catch (err) {
-    console.warn('[Version Script] Error parsing existing version.json, starting fresh:', err);
+    console.warn('[Version Generator] Error parsing version.json, defaulting to 1.0.1:', err);
+    rawVersion = '1.0.1';
   }
+} else {
+  rawVersion = '1.0.1';
 }
 
 const versionData = {

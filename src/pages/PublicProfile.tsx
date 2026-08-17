@@ -137,12 +137,15 @@ export default function PublicProfile() {
       
       await addDoc(collection(db, "users", profile.uid, "messages"), payloadData);
 
-      // Trigger Cloud Messaging alert (non-blocking)
+      // Trigger Real Background Push Notification (delivers even if app is closed or locked)
       fetch("/api/notify-whisper", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           receiverId: profile.uid,
+          subscriptions: profile.pushSubscriptions || (profile.pushSubscription ? [profile.pushSubscription] : []),
+          subscription: profile.pushSubscription || null,
+          fcmTokens: profile.fcmTokens || (profile.fcmToken ? [profile.fcmToken] : []),
           mode: currentMode.name,
           modeIcon: currentMode.icon,
           username: profile.username

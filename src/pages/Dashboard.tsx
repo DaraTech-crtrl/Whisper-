@@ -434,6 +434,20 @@ export default function Dashboard() {
     }
   }, [messages, privateKey]);
 
+  // Auto-sync Web Push subscription if permission is granted and notifications are enabled
+  useEffect(() => {
+    if (!user?.uid || dbUser?.notificationsEnabled === false) return;
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      const hasSyncedKey = `whisper_pwa_synced_${user.uid}`;
+      const lastSynced = sessionStorage.getItem(hasSyncedKey);
+      if (!lastSynced) {
+        enablePushNotifications(user.uid)
+          .then(() => sessionStorage.setItem(hasSyncedKey, "true"))
+          .catch(() => {});
+      }
+    }
+  }, [user?.uid, dbUser?.notificationsEnabled]);
+
   // Filter messages based on Active vs Archived, Mode / Version filter, and Tag filter
   const displayedMessages = useMemo(() => {
     return messages.filter(msg => {

@@ -2,11 +2,26 @@ import { getMessaging, getToken, onMessage, isSupported } from "firebase/messagi
 import { doc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { app, db } from "./firebase";
 
-// Web Push VAPID key / Sender ID
-// If custom VAPID key is provided in env or default, getToken will use it
-const VAPID_KEY = (import.meta as any).env?.VITE_FIREBASE_VAPID_KEY || undefined;
+// Web Push VAPID Public Key for Whisper Background Push Service
+export const VAPID_PUBLIC_KEY = 
+  (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY || 
+  "BMePyW-3IbjfHlFbKuYnq6p522JRTg0xf9XopVbFC4-79whD7MQdN4f5WdQRYox_pVi645CXkIdHTEaxL8VcauA";
 
 export type NotificationPermissionState = "granted" | "denied" | "default" | "unsupported";
+
+/**
+ * Convert a base64 string to a Uint8Array for PushManager applicationServerKey
+ */
+export function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 /**
  * Detect if the current device is running Apple iOS (iPhone / iPad / iPod)
@@ -154,9 +169,15 @@ export function playNotificationChime() {
 }
 
 /**
- * Request notification permission from the user, register service worker, and acquire FCM token
+ * Register Service Worker, obtain Web Push Subscription & FCM token, and store in Firestore
  */
-export async function enablePushNotifications(userId: string): Promise<{ success: boolean; token?: string; error?: string; needsIOSInstall?: boolean }> {
+export async function enablePushNotifications(userId: string): Promise<{ 
+  success: boolean; 
+  token?: string; 
+  subscription?: any; 
+  error?: string; 
+  needsIOSInstall?: boolean 
+}> {
   try {
     const isIOSDevice = isIOS();
     const isInstalled = isStandalonePWA();
@@ -170,7 +191,7 @@ export async function enablePushNotifications(userId: string): Promise<{ success
     }
 
     if (typeof window === "undefined" || !("Notification" in window)) {
-      return { success: false, error: "Your browser does not support web notifications." };
+      return { success: false, error: "Your browser does not support web push notifications." };
     }
 
     const permission = await Notification.requestPermission();
@@ -183,30 +204,52 @@ export async function enablePushNotifications(userId: string): Promise<{ success
       };
     }
 
+    let swRegistration: ServiceWorkerRegistration | undefined;
+    if ("serviceWorker" in navigator) {
+      try {
+        swRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+        await navigator.serviceWorker.ready;
+      } catch (swErr) {
+        console.warn("Service worker registration note:", swErr);
+      }
+    }
+
+    let pushSubscriptionJSON: any = null;
+
+    // 1. Obtain native Web Push Subscription (RFC8291 / RFC8292 standard for all browsers/OS)
+    if (swRegistration && "PushManager" in window && swRegistration.pushManager) {
+      try {
+        let sub = await swRegistration.pushManager.getSubscription();
+        if (!sub) {
+          sub = await swRegistration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+          });
+        }
+        if (sub) {
+          pushSubscriptionJSON = sub.toJSON();
+          try {
+            localStorage.setItem("whisper_push_sub", JSON.stringify(pushSubscriptionJSON));
+          } catch {}
+        }
+      } catch (pushErr: any) {
+        console.warn("Web Push Subscription note:", pushErr);
+      }
+    }
+
     let token: string | undefined;
 
-    // Check if Firebase Cloud Messaging SDK is supported in this browser
+    // 2. Also register with Firebase Cloud Messaging if available
     const supported = await isFCMSupported();
     if (supported) {
-      // Register FCM Service Worker
-      let swRegistration: ServiceWorkerRegistration | undefined;
-      if ("serviceWorker" in navigator) {
-        try {
-          swRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-          await navigator.serviceWorker.ready;
-        } catch (swErr) {
-          console.warn("Service worker registration note:", swErr);
-        }
-      }
-
       try {
         const messaging = getMessaging(app);
         const tokenOptions: any = {};
         if (swRegistration) {
           tokenOptions.serviceWorkerRegistration = swRegistration;
         }
-        if (VAPID_KEY) {
-          tokenOptions.vapidKey = VAPID_KEY;
+        if (VAPID_PUBLIC_KEY) {
+          tokenOptions.vapidKey = VAPID_PUBLIC_KEY;
         }
 
         token = await getToken(messaging, tokenOptions);
@@ -215,20 +258,34 @@ export async function enablePushNotifications(userId: string): Promise<{ success
         token = `web_push_${userId.substring(0, 8)}_${Date.now()}`;
       }
     } else {
-      // Fallback token identifier for browsers/iframes without FCM ServiceWorker permissions
-      token = `web_notif_${userId.substring(0, 8)}_${Date.now()}`;
+      token = `web_push_${userId.substring(0, 8)}_${Date.now()}`;
     }
 
-    // Save token and preferences to Firestore user profile
+    // 3. Save subscription and preferences to Firestore user profile
     const userDocRef = doc(db, "users", userId);
-    await updateDoc(userDocRef, {
+    const updateData: any = {
       notificationsEnabled: true,
       notificationSound: true,
-      ...(token ? { fcmToken: token, fcmTokens: arrayUnion(token) } : {}),
       updatedAt: serverTimestamp()
-    });
+    };
 
-    return { success: true, token };
+    if (pushSubscriptionJSON) {
+      updateData.pushSubscription = pushSubscriptionJSON;
+      updateData.pushSubscriptions = arrayUnion(pushSubscriptionJSON);
+    }
+
+    if (token) {
+      updateData.fcmToken = token;
+      updateData.fcmTokens = arrayUnion(token);
+    }
+
+    await updateDoc(userDocRef, updateData);
+
+    return { 
+      success: true, 
+      token, 
+      subscription: pushSubscriptionJSON 
+    };
   } catch (err: any) {
     console.error("Error enabling push notifications:", err);
     return { success: false, error: err.message || "Failed to enable notifications." };
@@ -236,16 +293,45 @@ export async function enablePushNotifications(userId: string): Promise<{ success
 }
 
 /**
- * Disable push notifications for the current user
+ * Disable push notifications for the current user and unsubscribe push manager
  */
 export async function disablePushNotifications(userId: string, currentToken?: string): Promise<{ success: boolean; error?: string }> {
   try {
+    if ("serviceWorker" in navigator) {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
+        if (reg) {
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            await sub.unsubscribe();
+          }
+        }
+      } catch (e) {
+        console.warn("Unsubscribe notice:", e);
+      }
+    }
+
+    let localSub: any = null;
+    try {
+      const stored = localStorage.getItem("whisper_push_sub");
+      if (stored) localSub = JSON.parse(stored);
+      localStorage.removeItem("whisper_push_sub");
+    } catch {}
+
     const userDocRef = doc(db, "users", userId);
-    await updateDoc(userDocRef, {
+    const updateData: any = {
       notificationsEnabled: false,
-      ...(currentToken ? { fcmTokens: arrayRemove(currentToken) } : {}),
       updatedAt: serverTimestamp()
-    });
+    };
+
+    if (currentToken) {
+      updateData.fcmTokens = arrayRemove(currentToken);
+    }
+    if (localSub) {
+      updateData.pushSubscriptions = arrayRemove(localSub);
+    }
+
+    await updateDoc(userDocRef, updateData);
 
     return { success: true };
   } catch (err: any) {
@@ -255,16 +341,76 @@ export async function disablePushNotifications(userId: string, currentToken?: st
 }
 
 /**
- * Send a sample/test notification on the user's device so they can test the workflow
+ * Send real background push notification through the server
  */
-export async function triggerTestNotification(username: string = "friend") {
+export async function dispatchServerPushNotification(options: {
+  receiverId?: string;
+  subscriptions?: any[];
+  subscription?: any;
+  mode?: string;
+  modeIcon?: string;
+  username?: string;
+  customTitle?: string;
+  customBody?: string;
+  delayMs?: number;
+}): Promise<{ success: boolean; delivered?: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/notify-whisper", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options)
+    });
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    console.warn("Dispatch server push warning:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Send a sample/test notification on the user's device.
+ * Triggers BOTH local notification and background Web Push via server so users can test closing the app.
+ */
+export async function triggerTestNotification(username: string = "friend", delaySeconds: number = 0) {
   playNotificationChime();
 
+  // Retrieve current push subscription from localStorage or ServiceWorker
+  let currentSub: any = null;
+  try {
+    const stored = localStorage.getItem("whisper_push_sub");
+    if (stored) currentSub = JSON.parse(stored);
+  } catch {}
+
+  if (!currentSub && "serviceWorker" in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
+      if (reg) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) currentSub = sub.toJSON();
+      }
+    } catch {}
+  }
+
+  // Dispatch background push test via server
+  if (currentSub) {
+    dispatchServerPushNotification({
+      subscription: currentSub,
+      username,
+      mode: "Secret Whisper",
+      modeIcon: "🤫",
+      customTitle: "Whisper Alert: Test Notification 🤫",
+      customBody: `Push notification delivered to @${username}! Tap to open Whisper inbox.`,
+      delayMs: delaySeconds * 1000
+    });
+  }
+
+  // Immediate local preview notification
   const title = "New Secret Whisper! 🤫";
   const options: NotificationOptions = {
     body: `Someone just sent a secret whisper to @${username}. Click to jump straight into your dashboard.`,
-    icon: "/favicon.ico",
-    badge: "/favicon.ico",
+    icon: "https://whisper.runflix.name.ng/android-chrome-192x192.png",
+    badge: "https://whisper.runflix.name.ng/favicon-32x32.png",
     tag: "test-whisper-notification",
     data: {
       url: "/dashboard"
@@ -308,8 +454,8 @@ export function displayIncomingWhisperNotification(modeName: string = "Secret Wh
   const title = `New ${modeName} Received! ${modeIcon}`;
   const options: NotificationOptions = {
     body: `You have a new encrypted anonymous ${modeName.toLowerCase()}. Click to open and read.`,
-    icon: "/favicon.ico",
-    badge: "/favicon.ico",
+    icon: "https://whisper.runflix.name.ng/android-chrome-192x192.png",
+    badge: "https://whisper.runflix.name.ng/favicon-32x32.png",
     tag: "incoming-whisper-" + Date.now(),
     data: {
       url: "/dashboard"
@@ -353,3 +499,4 @@ export function subscribeToForegroundFCM(onReceive: (payload: any) => void) {
     if (unsub) unsub();
   };
 }
+

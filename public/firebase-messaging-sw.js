@@ -1,5 +1,5 @@
-// Firebase Cloud Messaging Service Worker for Whisper
-// Handles background push notifications when app is closed or in background
+// Firebase Cloud Messaging & Web Push Service Worker for Whisper
+// Handles background push notifications when app is closed, killed, or screen is locked
 
 importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-messaging-compat.js');
@@ -31,7 +31,7 @@ try {
 
 if (messaging) {
   messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Received background message:', payload);
+    console.log('[firebase-messaging-sw.js] Received FCM background message:', payload);
     
     const notificationTitle = payload.notification?.title || payload.data?.title || 'New Whisper Received! 🤫';
     const notificationBody = payload.notification?.body || payload.data?.body || 'Someone just sent you a new anonymous encrypted whisper. Tap to decrypt and read.';
@@ -39,10 +39,11 @@ if (messaging) {
     
     const notificationOptions = {
       body: notificationBody,
-      icon: payload.notification?.icon || payload.data?.icon || '/favicon.ico',
-      badge: '/favicon.ico',
-      tag: 'whisper-new-msg-' + Date.now(),
+      icon: payload.notification?.icon || payload.data?.icon || 'https://whisper.runflix.name.ng/android-chrome-192x192.png',
+      badge: 'https://whisper.runflix.name.ng/favicon-32x32.png',
+      tag: 'whisper-msg-' + Date.now(),
       renotify: true,
+      vibrate: [200, 100, 200],
       requireInteraction: false,
       data: {
         url: clickUrl,
@@ -61,9 +62,53 @@ if (messaging) {
   });
 }
 
+// Native Web Push event handler — triggers when app is closed, in background, or offline
+self.addEventListener('push', (event) => {
+  console.log('[ServiceWorker] Native Web Push event received in background:', event);
+  
+  let payload = {};
+  if (event.data) {
+    try {
+      payload = event.data.json();
+    } catch (e) {
+      payload = { body: event.data.text() };
+    }
+  }
+
+  const notificationTitle = payload.title || payload.notification?.title || 'New Whisper Received! 🤫';
+  const notificationBody = payload.body || payload.notification?.body || 'Someone just sent you an anonymous encrypted whisper. Tap to decrypt and read.';
+  const clickUrl = payload.url || payload.data?.url || payload.click_action || '/dashboard';
+  const icon = payload.icon || payload.notification?.icon || 'https://whisper.runflix.name.ng/android-chrome-192x192.png';
+  const badge = payload.badge || payload.notification?.badge || 'https://whisper.runflix.name.ng/favicon-32x32.png';
+
+  const notificationOptions = {
+    body: notificationBody,
+    icon: icon,
+    badge: badge,
+    tag: payload.tag || ('whisper-push-' + Date.now()),
+    renotify: true,
+    vibrate: [200, 100, 200],
+    requireInteraction: false,
+    data: {
+      url: clickUrl,
+      dateOfArrival: Date.now(),
+      mode: payload.mode || payload.data?.mode || 'anonymous'
+    },
+    actions: [
+      {
+        action: 'open_inbox',
+        title: 'Open Whisper 🚀'
+      }
+    ]
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(notificationTitle, notificationOptions)
+  );
+});
+
 // Handle service worker lifecycle and auto-update
 self.addEventListener('install', (event) => {
-  // Allow new service worker to activate
   self.skipWaiting();
 });
 
@@ -102,3 +147,4 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+

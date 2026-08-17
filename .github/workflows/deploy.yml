@@ -21,7 +21,10 @@ jobs:
         run: npm ci || npm install
 
       - name: Build Project
-        run: npm run build
+        run: |
+          npm run build
+          cp package.json dist/package.json
+          cp .env.example dist/.env.example
 
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4

@@ -48,7 +48,7 @@ export default function Welcome() {
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-center p-4 sm:p-6 w-full min-h-[100dvh] overflow-hidden bg-slate-50 dark:bg-slate-950">
+    <div className="relative flex flex-col items-center justify-center p-4 sm:p-6 pt-[max(1.5rem,calc(1.5rem+env(safe-area-inset-top,0px)))] pb-[max(1.5rem,calc(1.5rem+env(safe-area-inset-bottom,0px)))] w-full min-h-[100dvh] overflow-hidden bg-slate-50 dark:bg-slate-950">
       {/* Premium Background Grid & Glowing Orbs */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
         {/* Subtle Grid */}

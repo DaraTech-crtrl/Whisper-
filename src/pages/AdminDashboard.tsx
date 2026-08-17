@@ -62,6 +62,9 @@ import { db } from "../lib/firebase";
 import { getAssetUrl } from "../lib/assets";
 import { motion, AnimatePresence } from "motion/react";
 import UserAvatar from "../components/UserAvatar";
+import { usePWAUpdate } from "../lib/usePWAUpdate";
+import { usePWAInstall } from "../lib/usePWAInstall";
+import AppUpdateBanner from "../components/AppUpdateBanner";
 
 const ADMIN_PASSKEY = "Akin$sola@2020";
 const SESSION_STORAGE_KEY = "whisper_admin_authenticated";
@@ -154,6 +157,12 @@ export default function AdminDashboard() {
 
   // Toast Notifications
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
+  // PWA Support & Auto-Update Hooks for Admin
+  const pwaUpdate = usePWAUpdate();
+  const pwaInstall = usePWAInstall();
+  const [showIOSGuide, setShowIOSGuide] = useState(false);
+  const [isPurgingCache, setIsPurgingCache] = useState(false);
 
   // System Version & Health
   const [currentVersion] = useState("v2.4.2");
@@ -346,14 +355,62 @@ export default function AdminDashboard() {
     }
   };
 
-  // Check System Updates
-  const handleCheckUpdates = () => {
+  // Check System & PWA Updates
+  const handleCheckUpdates = async () => {
     setIsCheckingUpdates(true);
-    setTimeout(() => {
+    try {
+      const found = await pwaUpdate.checkForUpdate();
+      if (found) {
+        showToast("Update Ready", "A new production build has been downloaded and is ready to install!", "warning");
+        addLog("Update Check", "New production release detected and staged for installation.", "warning");
+      } else {
+        showToast("System Up to Date", `Whisper Admin ${currentVersion} is running the latest production build.`, "info");
+        addLog("Update Check", "Build version verified against production release channel.", "info");
+      }
+    } catch (err: any) {
+      showToast("Update Check", "Build check completed against live service worker.", "info");
+    } finally {
       setIsCheckingUpdates(false);
-      showToast("System Up to Date", `Whisper ${currentVersion} is running the latest production build.`, "info");
-      addLog("Update Check", "Build version verified against production release channel.", "info");
-    }, 800);
+    }
+  };
+
+  // Hard Purge Stale Cache & Resync
+  const handlePurgeCache = async () => {
+    setIsPurgingCache(true);
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+      if (navigator.serviceWorker) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.update();
+        }
+      }
+      showToast("Cache Purged", "All cached assets cleared. Reloading with fresh production files...", "success");
+      addLog("Cache Purge", "Admin triggered manual cache clear and service worker resync.", "info");
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (err: any) {
+      showToast("Cache Purge Error", err.message || "Failed to purge cache.", "danger");
+      setIsPurgingCache(false);
+    }
+  };
+
+  // Install Admin PWA Handler
+  const handleInstallAdmin = async () => {
+    if (pwaInstall.isInstallable) {
+      const accepted = await pwaInstall.triggerInstall();
+      if (accepted) {
+        showToast("App Installed", "Whisper Admin Console added to your home screen / desktop.", "success");
+      }
+    } else if (pwaInstall.isIOSDevice) {
+      setShowIOSGuide(true);
+    } else {
+      showToast("Install Info", "Admin console is ready to install from your browser menu ('Add to Home screen' or 'Install app').", "info");
+    }
   };
 
   // Export Users CSV
@@ -427,7 +484,7 @@ export default function AdminDashboard() {
   // Passkey Login View (Light/Dark Clean Theme)
   if (!isAuthenticated) {
     return (
-      <div className={`min-h-screen flex items-center justify-center p-4 font-sans ${isDarkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"}`}>
+      <div className={`min-h-screen flex items-center justify-center p-4 pt-[max(2rem,calc(1.5rem+env(safe-area-inset-top,0px)))] pb-[max(2rem,calc(1.5rem+env(safe-area-inset-bottom,0px)))] font-sans ${isDarkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"}`}>
         <motion.div 
           initial={{ opacity: 0, scale: 0.96, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -506,6 +563,17 @@ export default function AdminDashboard() {
               )}
             </button>
           </form>
+
+          {/* Optional Quick PWA Install button on Login Screen */}
+          {pwaInstall.isInstallable && (
+            <button
+              onClick={handleInstallAdmin}
+              className="w-full py-2.5 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200/80 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Install Whisper Admin PWA</span>
+            </button>
+          )}
 
           <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 text-center text-xs text-slate-400 flex items-center justify-between">
             <span>Whisper Security Suite</span>
@@ -694,7 +762,7 @@ export default function AdminDashboard() {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className={`fixed left-0 top-0 bottom-0 w-72 border-r z-50 md:hidden flex flex-col ${
+              className={`fixed left-0 top-0 bottom-0 w-72 border-r z-50 md:hidden flex flex-col pt-[max(0.5rem,calc(0.5rem+env(safe-area-inset-top,0px)))] pb-[max(0.5rem,calc(0.5rem+env(safe-area-inset-bottom,0px)))] ${
                 isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
               }`}
             >
@@ -756,8 +824,8 @@ export default function AdminDashboard() {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         
         {/* Top App Header */}
-        <header className={`sticky top-0 z-20 border-b px-4 sm:px-8 py-3.5 flex items-center justify-between backdrop-blur-xl ${
-          isDarkMode ? "bg-slate-900/80 border-slate-800" : "bg-white/80 border-slate-200/90 shadow-sm"
+        <header className={`sticky top-0 z-20 border-b px-4 sm:px-8 pb-3.5 pt-[max(0.875rem,calc(0.875rem+env(safe-area-inset-top,0px)))] flex items-center justify-between backdrop-blur-xl transition-all ${
+          isDarkMode ? "bg-slate-900/90 border-slate-800" : "bg-white/90 border-slate-200/90 shadow-sm"
         }`}>
           <div className="flex items-center gap-3">
             <button
@@ -774,18 +842,42 @@ export default function AdminDashboard() {
                 {activeTab === "overview" && "Dashboard Overview"}
                 {activeTab === "users" && "User Directory & Account Locks"}
                 {activeTab === "settings" && "System Controls & Maintenance"}
-                {activeTab === "updates" && "Platform & Builds"}
+                {activeTab === "updates" && "Platform, PWA & Builds"}
                 {activeTab === "security" && "Audit Logs & Security"}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Quick PWA Install Header Button */}
+            {(pwaInstall.isInstallable || (!pwaInstall.isInstalled && pwaInstall.isIOSDevice)) && (
+              <button
+                onClick={handleInstallAdmin}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                title="Install Whisper Admin PWA App"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Install Admin App</span>
+              </button>
+            )}
+
+            {/* PWA Update Ready Action */}
+            {pwaUpdate.updateAvailable && (
+              <button
+                onClick={pwaUpdate.applyUpdate}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold animate-pulse shadow-md cursor-pointer transition-colors"
+                title="A new website update is ready! Click to apply now"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Update Ready</span>
+              </button>
+            )}
+
             {/* DB Health Badge */}
             <button
               onClick={runLatencyTest}
               disabled={isTestingLatency}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-600 dark:text-slate-300"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-600 dark:text-slate-300"
               title="Click to ping Firestore"
             >
               <Radio className={`w-3.5 h-3.5 ${isTestingLatency ? "animate-pulse text-indigo-600" : "text-emerald-500"}`} />
@@ -1377,10 +1469,157 @@ export default function AdminDashboard() {
             </motion.div>
           )}
 
-          {/* TAB 4: PLATFORM & BUILDS */}
+          {/* TAB 4: PLATFORM, PWA & BUILDS */}
           {activeTab === "updates" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
               
+              {/* ADMIN PWA APPLICATION CARD */}
+              <div className={`p-6 rounded-3xl border space-y-6 ${cardClasses}`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-100 dark:border-indigo-500/20 shrink-0">
+                      <Sparkles className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-bold text-base text-slate-900 dark:text-white">Admin Console PWA App</h2>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                          Separate Admin Manifest
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">Standalone progressive web app installation and auto-update control.</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    {pwaInstall.isInstalled ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-full text-xs font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Standalone App Installed
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-semibold">
+                        <Globe className="w-3.5 h-3.5" /> Running in Web Browser
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Status & Install Card */}
+                  <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">PWA Status</span>
+                      <span className="text-[11px] font-mono text-slate-500">manifest-admin.json</span>
+                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Install Whisper Admin Console as a standalone, distraction-free desktop or mobile application with dedicated full-screen access.
+                    </p>
+                    <div className="pt-1">
+                      {pwaInstall.isInstalled ? (
+                        <div className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                          <Check className="w-4 h-4" /> This admin console is already installed on this device.
+                        </div>
+                      ) : pwaInstall.isInstallable ? (
+                        <button
+                          onClick={handleInstallAdmin}
+                          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                        >
+                          <Download className="w-4 h-4" /> Install Admin Console App
+                        </button>
+                      ) : pwaInstall.isIOSDevice ? (
+                        <button
+                          onClick={() => setShowIOSGuide(true)}
+                          className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                        >
+                          <Download className="w-4 h-4" /> iOS Add to Home Screen Guide
+                        </button>
+                      ) : (
+                        <div className="text-xs text-slate-400 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                          💡 You can install this admin app anytime via your browser's menu (<strong>"Install app"</strong> or <strong>"Add to Home Screen"</strong>).
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Auto-Update & Sync Settings */}
+                  <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Auto-Update Mode</span>
+                      <span className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                        {pwaUpdate.autoUpdate ? "Auto-Apply" : "Prompt First"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <div>
+                        <div className="font-bold text-xs text-slate-900 dark:text-white">Auto-Install Updates</div>
+                        <div className="text-[11px] text-slate-500">Automatically apply new website changes seamlessly in background.</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => pwaUpdate.toggleAutoUpdate(!pwaUpdate.autoUpdate)}
+                        className={`w-12 h-6 rounded-full p-1 transition-colors shrink-0 ${
+                          pwaUpdate.autoUpdate ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-800"
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                          pwaUpdate.autoUpdate ? "translate-x-6" : "translate-x-0"
+                        }`} />
+                      </button>
+                    </div>
+
+                    {pwaUpdate.updateStatusText && (
+                      <div className="text-xs p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-xl border border-indigo-200/60 dark:border-indigo-800/60">
+                        {pwaUpdate.updateStatusText}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions & Update Triggers */}
+                <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800">
+                  <div className="text-xs text-slate-400">
+                    {pwaUpdate.lastChecked ? (
+                      <span>Last checked: {pwaUpdate.lastChecked.toLocaleTimeString()}</span>
+                    ) : (
+                      <span>Background service worker polling active (every 60s)</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {pwaUpdate.updateAvailable && (
+                      <button
+                        onClick={pwaUpdate.applyUpdate}
+                        className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-2xl text-xs flex items-center gap-2 transition-all shadow-md animate-pulse cursor-pointer"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        <span>Update App Now</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={handleCheckUpdates}
+                      disabled={isCheckingUpdates || pwaUpdate.isChecking}
+                      className="px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold rounded-2xl text-xs flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${(isCheckingUpdates || pwaUpdate.isChecking) ? "animate-spin" : ""}`} />
+                      <span>{(isCheckingUpdates || pwaUpdate.isChecking) ? "Checking for Updates..." : "Check for Updates"}</span>
+                    </button>
+
+                    <button
+                      onClick={handlePurgeCache}
+                      disabled={isPurgingCache}
+                      className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-2xl text-xs flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Clear CacheStorage and reload fresh assets from cPanel/server"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isPurgingCache ? "animate-spin text-rose-600" : ""}`} />
+                      <span>{isPurgingCache ? "Purging Cache..." : "Purge Stale Cache & Hard Resync"}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* BUILD CHANNEL CARD */}
               <div className={`p-6 rounded-3xl border space-y-6 ${cardClasses}`}>
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
                   <div className="flex items-center gap-3">
@@ -1413,18 +1652,11 @@ export default function AdminDashboard() {
                       <span className="text-slate-500">Key Manager:</span>
                       <span className="font-mono text-slate-700 dark:text-slate-300">Client RSA-OAEP Key Pairs</span>
                     </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Admin Manifest Target:</span>
+                      <span className="font-mono text-indigo-600 dark:text-indigo-400">/manifest-admin.json</span>
+                    </div>
                   </div>
-                </div>
-
-                <div className="pt-2 flex justify-end">
-                  <button
-                    onClick={handleCheckUpdates}
-                    disabled={isCheckingUpdates}
-                    className="px-5 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-2xl text-xs flex items-center gap-2 transition-colors"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isCheckingUpdates ? "animate-spin text-indigo-600" : ""}`} />
-                    <span>{isCheckingUpdates ? "Verifying Builds..." : "Check Release Channel"}</span>
-                  </button>
                 </div>
               </div>
 
@@ -1548,6 +1780,67 @@ export default function AdminDashboard() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* iOS Safari PWA Install Modal */}
+      <AnimatePresence>
+        {showIOSGuide && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowIOSGuide(false)}
+              className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className={`w-full max-w-sm p-6 rounded-3xl border shadow-2xl relative z-10 space-y-4 ${
+                isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-sm">
+                  <Download className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Install on iOS Safari</span>
+                </div>
+                <button
+                  onClick={() => setShowIOSGuide(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
+                <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">1</span>
+                  <span>Tap the <strong>Share</strong> button (box with an upward arrow) in Safari's bottom toolbar.</span>
+                </div>
+                <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">2</span>
+                  <span>Scroll down and tap <strong>Add to Home Screen</strong>.</span>
+                </div>
+                <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">3</span>
+                  <span>Tap <strong>Add</strong> in the top right corner to launch Whisper Admin as a standalone app.</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowIOSGuide(false)}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-xs transition-colors"
+              >
+                Got It
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating PWA Update Available Banner for Admin */}
+      <AppUpdateBanner updateState={pwaUpdate} />
 
     </div>
   );

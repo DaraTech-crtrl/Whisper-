@@ -305,7 +305,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 w-full my-auto overflow-x-hidden py-10 sm:py-16">
+    <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 w-full my-auto overflow-x-hidden pt-[max(2rem,calc(1.5rem+env(safe-area-inset-top,0px)))] pb-[max(2rem,calc(1.5rem+env(safe-area-inset-bottom,0px)))]">
       <AnimatePresence mode="wait">
         {!user ? (
           /* STEP 1: Not Logged In -> Sign In / Sign Up Form or Custom Password Reset */

@@ -57,14 +57,14 @@ export default function Layout() {
       
       {/* Global Announcement Banner */}
       {sysSettings?.announcementActive && sysSettings.announcementText && !isAdminRoute && (
-        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 text-white text-xs py-2 px-4 flex items-center justify-center gap-2 font-medium shadow-sm border-b border-indigo-500/30">
+        <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 text-white text-xs py-2 px-4 pt-[max(0.5rem,calc(0.5rem+env(safe-area-inset-top,0px)))] flex items-center justify-center gap-2 font-medium shadow-sm border-b border-indigo-500/30">
           <Bell className="w-3.5 h-3.5 shrink-0 animate-bounce text-amber-300" />
           <span className="truncate">{sysSettings.announcementText}</span>
         </div>
       )}
 
       {!isWelcomeOrAuth && (
-        <header className="p-4 border-b border-slate-100 dark:border-slate-900 flex justify-between items-center sticky top-0 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md z-10">
+        <header className="px-4 pb-3.5 pt-[max(0.875rem,calc(0.875rem+env(safe-area-inset-top,0px)))] border-b border-slate-100 dark:border-slate-900 flex justify-between items-center sticky top-0 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md z-30 transition-all">
           <Link to="/" className="flex items-center gap-2.5 font-bold text-xl text-indigo-600 dark:text-indigo-400">
             <img 
               src={getAssetUrl("android-chrome-192x192.png")} 
@@ -77,7 +77,7 @@ export default function Layout() {
           {user && (
             <button 
               onClick={handleLogout}
-              className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors"
+              className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors cursor-pointer"
               title="Log out"
             >
               <LogOut className="w-5 h-5" />

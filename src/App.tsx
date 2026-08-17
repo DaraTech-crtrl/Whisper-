@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
@@ -12,6 +12,27 @@ import Dashboard from "./pages/Dashboard";
 import PublicProfile from "./pages/PublicProfile";
 import AdminDashboard from "./pages/AdminDashboard";
 import Maintenance from "./pages/Maintenance";
+
+function RouteManifestSync() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const manifestEl = document.getElementById("app-manifest-link") as HTMLLinkElement | null;
+    const isAdmin = location.pathname.startsWith("/admin");
+
+    if (manifestEl) {
+      manifestEl.href = isAdmin ? "/manifest-admin.json" : "/manifest.json";
+    }
+
+    if (isAdmin) {
+      document.title = "Whisper Admin Console — Management & Security";
+    } else {
+      document.title = "Whisper — Anonymous Encrypted Messaging";
+    }
+  }, [location.pathname]);
+
+  return null;
+}
 
 export default function App() {
   const { 
@@ -98,6 +119,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <RouteManifestSync />
       <Routes>
         <Route path="/admin/unknownofrun" element={<AdminDashboard />} />
         <Route path="/maintenance" element={<Maintenance />} />

@@ -55,6 +55,8 @@ import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { generateShareImageBlob } from "../lib/canvasImage";
 import EmptyState from "../components/EmptyState";
 import ShareCardModal from "../components/ShareCardModal";
+import WhisperCarousel from "../components/WhisperCarousel";
+import { WhisperMode, WHISPER_MODES, getModeUrl, getMessageMode } from "../lib/whisperModes";
 import localforage from "localforage";
 
 export interface Message {
@@ -68,6 +70,8 @@ export interface Message {
   reaction?: string;
   rating?: number;
   mood?: string;
+  mode?: string;
+  category?: string;
   unlocksAt?: any;
   archived?: boolean;
   archivedAt?: any;
@@ -96,6 +100,7 @@ export default function Dashboard() {
   
   // Sub-inbox view, sorting & filters
   const [inboxView, setInboxView] = useState<"active" | "archived">("active");
+  const [selectedModeFilter, setSelectedModeFilter] = useState<string>("ALL"); // ALL | anonymous | confess | about | ask | opinion | crush | compliment | roast
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>("ALL"); // ALL | UNREAD | tag_name
   const [sortBy, setSortBy] = useState<SortOption>("newest"); // newest | oldest | most_rated
   
@@ -187,6 +192,11 @@ export default function Dashboard() {
   const [isExporting, setIsExporting] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedQRMode, setSelectedQRMode] = useState<WhisperMode>(WHISPER_MODES[0]);
+  const [selectedQRUrl, setSelectedQRUrl] = useState<string>("");
+  const [selectedShareMode, setSelectedShareMode] = useState<WhisperMode>(WHISPER_MODES[0]);
+  const [selectedShareUrl, setSelectedShareUrl] = useState<string>("");
+  const [activeFeaturedModeId, setActiveFeaturedModeId] = useState<string>("anonymous");
   const [showOnboarding, setShowOnboarding] = useState(dbUser?.onboardingCompleted !== true);
 
   // Global settings listener (for restricting sender hints display)
@@ -336,7 +346,7 @@ export default function Dashboard() {
     }
   }, [messages, privateKey]);
 
-  // Filter messages based on Active vs Archived and Tag filter
+  // Filter messages based on Active vs Archived, Mode / Version filter, and Tag filter
   const displayedMessages = useMemo(() => {
     return messages.filter(msg => {
       // 1. Archive filter
@@ -344,12 +354,18 @@ export default function Dashboard() {
       if (inboxView === "active" && isArchived) return false;
       if (inboxView === "archived" && !isArchived) return false;
 
-      // 2. Tag / Read filter
+      // 2. Version / Mode filter
+      if (selectedModeFilter !== "ALL") {
+        const msgMode = getMessageMode(msg);
+        if (msgMode.id !== selectedModeFilter) return false;
+      }
+
+      // 3. Tag / Read filter
       if (selectedTagFilter === "ALL") return true;
       if (selectedTagFilter === "UNREAD") return !msg.read;
       return msg.tags && msg.tags.includes(selectedTagFilter);
     });
-  }, [messages, inboxView, selectedTagFilter]);
+  }, [messages, inboxView, selectedModeFilter, selectedTagFilter]);
 
   const sortedMessages = useMemo(() => {
     const getMsgTime = (m: Message) => {
@@ -393,6 +409,21 @@ export default function Dashboard() {
   const activeCount = useMemo(() => messages.filter(m => !m.archived).length, [messages]);
   const archivedCount = useMemo(() => messages.filter(m => Boolean(m.archived)).length, [messages]);
   const unreadCount = useMemo(() => messages.filter(m => !m.archived && !m.read).length, [messages]);
+
+  // Version / Mode Counts for current inbox view (Active or Archived)
+  const modeCounts = useMemo(() => {
+    const counts: Record<string, number> = { ALL: 0 };
+    WHISPER_MODES.forEach(m => { counts[m.id] = 0; });
+    messages.forEach(msg => {
+      const isArchived = Boolean(msg.archived);
+      if (inboxView === "active" && isArchived) return;
+      if (inboxView === "archived" && !isArchived) return;
+      counts.ALL = (counts.ALL || 0) + 1;
+      const m = getMessageMode(msg);
+      counts[m.id] = (counts[m.id] || 0) + 1;
+    });
+    return counts;
+  }, [messages, inboxView]);
 
   // Bulk Selection Helpers
   const isAllSelected = sortedMessages.length > 0 && sortedMessages.every(m => selectedIds.has(m.id));
@@ -667,25 +698,27 @@ export default function Dashboard() {
     setIsExporting(true);
     try {
       const text = decryptedCache[selectedMessage.id] || "";
+      const mode = getMessageMode(selectedMessage);
       const { blob, dataUrl } = await generateShareImageBlob({
         text,
         reaction: selectedMessage.reaction,
         mood: selectedMessage.mood,
         publicUrl,
-        username: dbUser?.username
+        username: dbUser?.username,
+        mode
       });
 
-      const file = new File([blob], `whisper-story.png`, { type: "image/png" });
+      const file = new File([blob], `whisper-${mode.id}-story.png`, { type: "image/png" });
 
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: "Anonymous Message on Whisper",
+          title: `${mode.badge} on Whisper`,
           text: `Send me an anonymous message! ${publicUrl}`
         });
       } else {
         const link = document.createElement("a");
-        link.download = `whisper-anonymous-message.png`;
+        link.download = `whisper-${mode.id}-message.png`;
         link.href = dataUrl;
         link.click();
       }
@@ -701,15 +734,17 @@ export default function Dashboard() {
     setIsExporting(true);
     try {
       const text = decryptedCache[selectedMessage.id] || "";
+      const mode = getMessageMode(selectedMessage);
       const { dataUrl } = await generateShareImageBlob({
         text,
         reaction: selectedMessage.reaction,
         mood: selectedMessage.mood,
         publicUrl,
-        username: dbUser?.username
+        username: dbUser?.username,
+        mode
       });
       const link = document.createElement("a");
-      link.download = `whisper-message.png`;
+      link.download = `whisper-${mode.id}-message.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
@@ -814,41 +849,24 @@ export default function Dashboard() {
 
       {activeTab === "inbox" ? (
         <div className="space-y-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
-          {/* Secret Link Card */}
-          <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 rounded-3xl p-6 text-white shadow-lg space-y-5">
-            <div className="space-y-1">
-              <h2 className="text-xl font-bold">Your Secret Link</h2>
-              <p className="text-indigo-100 text-xs">Post this on your stories or bio to receive anonymous messages.</p>
-            </div>
-            
-            <div className="bg-black/20 p-3 rounded-xl flex items-center gap-2 backdrop-blur-sm">
-              <div className="flex-1 truncate font-mono text-xs sm:text-sm">{publicUrl}</div>
-            </div>
-
-            <div className="flex gap-2.5">
-              <button 
-                onClick={handleCopy}
-                className="flex-1 flex items-center justify-center gap-2 bg-white/20 hover:bg-white/30 transition-colors py-2.5 rounded-xl font-medium text-sm"
-              >
-                {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-300"/> : <Copy className="w-4 h-4"/>}
-                {copied ? "Copied!" : "Copy Link"}
-              </button>
-              <button 
-                onClick={() => setShowQR(true)}
-                className="w-11 flex items-center justify-center bg-white/20 hover:bg-white/30 transition-colors py-2.5 rounded-xl"
-                title="Show QR Code"
-              >
-                <QrCode className="w-4 h-4" />
-              </button>
-              <button 
-                onClick={handleShare}
-                className="flex-1 flex items-center justify-center gap-2 bg-white text-indigo-600 hover:bg-indigo-50 transition-colors py-2.5 rounded-xl font-bold text-sm shadow-sm"
-              >
-                <Share2 className="w-4 h-4"/>
-                Share
-              </button>
-            </div>
-          </div>
+          {/* Upgrade: Whisper Version Carousel Deck */}
+          <WhisperCarousel
+            username={dbUser.username}
+            activeModeId={activeFeaturedModeId}
+            onSelectMode={(mode) => {
+              setActiveFeaturedModeId(mode.id);
+            }}
+            onOpenQR={(mode, url) => {
+              setSelectedQRMode(mode);
+              setSelectedQRUrl(url);
+              setShowQR(true);
+            }}
+            onOpenShare={(mode, url) => {
+              setSelectedShareMode(mode);
+              setSelectedShareUrl(url);
+              setShowShareModal(true);
+            }}
+          />
 
           {/* QR Code Modal / Drawer */}
           <AnimatePresence>
@@ -860,14 +878,23 @@ export default function Dashboard() {
                 className="overflow-hidden"
               >
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col items-center gap-4 text-center">
-                  <h3 className="font-bold">Your Profile QR Code</h3>
-                  <p className="text-xs text-slate-500 mb-2">Let friends scan this to send you anonymous messages offline.</p>
-                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <QRCodeSVG value={publicUrl} size={180} fgColor="#4f46e5" level="H" />
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                    <span className="text-base">{selectedQRMode.icon}</span>
+                    <span>{selectedQRMode.name}</span>
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-900 dark:text-white">Scan for {selectedQRMode.name}</h3>
+                  <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
+                    Let friends scan this QR code to open your dedicated <strong>{selectedQRMode.name}</strong> page directly.
+                  </p>
+                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                    <QRCodeSVG value={selectedQRUrl || getModeUrl(selectedQRMode, dbUser.username)} size={180} fgColor="#4f46e5" level="H" />
+                  </div>
+                  <div className="font-mono text-xs text-slate-500 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3.5 py-2 rounded-xl max-w-full truncate select-all">
+                    {selectedQRUrl || getModeUrl(selectedQRMode, dbUser.username)}
                   </div>
                   <button 
                     onClick={() => setShowQR(false)}
-                    className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                    className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
                   >
                     Hide QR Code
                   </button>
@@ -954,6 +981,65 @@ export default function Dashboard() {
                 )}
             </div>
 
+            {/* Version Mode Filter Bar */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                  <span>Version Mode:</span>
+                </span>
+                {(selectedModeFilter !== "ALL" || selectedTagFilter !== "ALL") && (
+                  <button
+                    onClick={() => {
+                      setSelectedModeFilter("ALL");
+                      setSelectedTagFilter("ALL");
+                    }}
+                    className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                  >
+                    <span>Reset Filters</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide py-0.5">
+                <button
+                  onClick={() => setSelectedModeFilter("ALL")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5",
+                    selectedModeFilter === "ALL"
+                      ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-sm"
+                      : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                  )}
+                >
+                  <span>✨</span>
+                  <span>All Versions ({modeCounts.ALL || 0})</span>
+                </button>
+
+                {WHISPER_MODES.map(mode => {
+                  const count = modeCounts[mode.id] || 0;
+                  const isSelected = selectedModeFilter === mode.id;
+
+                  return (
+                    <button
+                      key={mode.id}
+                      onClick={() => setSelectedModeFilter(isSelected ? "ALL" : mode.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5",
+                        isSelected
+                          ? `${mode.msgBadgeBg} ring-2 ring-indigo-500/30 scale-105 shadow-sm`
+                          : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                      )}
+                    >
+                      <span>{mode.icon}</span>
+                      <span>{mode.name}</span>
+                      {count > 0 && (
+                        <span className="text-[10px] opacity-75 font-mono">({count})</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Tag / Category Filter Bar */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide py-1">
               <button
@@ -965,12 +1051,12 @@ export default function Dashboard() {
                     : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300"
                 )}
               >
-                All ({inboxView === "active" ? activeCount : archivedCount})
+                All Statuses ({inboxView === "active" ? activeCount : archivedCount})
               </button>
               
               {inboxView === "active" && (
                 <button
-                  onClick={() => setSelectedTagFilter("UNREAD")}
+                  onClick={() => setSelectedTagFilter(selectedTagFilter === "UNREAD" ? "ALL" : "UNREAD")}
                   className={cn(
                     "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1",
                     selectedTagFilter === "UNREAD"
@@ -986,7 +1072,8 @@ export default function Dashboard() {
               {Object.entries(PRESET_TAGS).map(([key, tagDef]) => {
                 const countForTag = messages.filter(m => {
                   const matchesView = inboxView === "active" ? !m.archived : Boolean(m.archived);
-                  return matchesView && m.tags && m.tags.includes(key);
+                  const matchesMode = selectedModeFilter === "ALL" || getMessageMode(m).id === selectedModeFilter;
+                  return matchesView && matchesMode && m.tags && m.tags.includes(key);
                 }).length;
 
                 return (
@@ -1137,18 +1224,28 @@ export default function Dashboard() {
                   variant={
                     inboxView === "archived"
                       ? "archived"
-                      : selectedTagFilter !== "ALL"
+                      : (selectedTagFilter !== "ALL" || selectedModeFilter !== "ALL")
                         ? "filter"
                         : "inbox"
                   }
                   selectedTag={selectedTagFilter}
+                  selectedMode={selectedModeFilter}
+                  filterLabel={
+                    selectedModeFilter !== "ALL" && selectedTagFilter !== "ALL"
+                      ? `${WHISPER_MODES.find(m => m.id === selectedModeFilter)?.name || selectedModeFilter} + ${selectedTagFilter}`
+                      : selectedModeFilter !== "ALL"
+                        ? (WHISPER_MODES.find(m => m.id === selectedModeFilter)?.name || selectedModeFilter)
+                        : selectedTagFilter
+                  }
                   username={dbUser?.username}
-                  copied={copied}
-                  onCopyLink={handleCopy}
-                  onResetFilter={() => setSelectedTagFilter("ALL")}
+                  onResetFilter={() => {
+                    setSelectedTagFilter("ALL");
+                    setSelectedModeFilter("ALL");
+                  }}
                   onSwitchToActive={() => {
                     setInboxView("active");
                     setSelectedTagFilter("ALL");
+                    setSelectedModeFilter("ALL");
                   }}
                 />
               )}
@@ -1157,6 +1254,7 @@ export default function Dashboard() {
                 const rep = msg.senderId && senderReputations[msg.senderId];
                 const isSelected = selectedIds.has(msg.id);
                 const msgTags = msg.tags || [];
+                const msgMode = getMessageMode(msg);
 
                 return (
                   <motion.div
@@ -1170,14 +1268,14 @@ export default function Dashboard() {
                       isSelected 
                         ? "bg-indigo-50/90 dark:bg-indigo-950/40 border-indigo-500 shadow-md ring-2 ring-indigo-500/30"
                         : msg.read 
-                          ? "bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800/90 hover:border-slate-300 dark:hover:border-slate-700" 
-                          : "bg-indigo-50/60 dark:bg-indigo-950/20 border-indigo-200/90 dark:border-indigo-800/80 shadow-sm"
+                          ? `bg-white dark:bg-slate-950 ${msgMode.msgBorder}` 
+                          : `${msgMode.msgUnreadBg} ${msgMode.msgBorder} shadow-sm`
                     )}
                     onClick={() => handleMessageClick(msg)}
                   >
-                    {/* Header Row: Checkbox, Timestamp, Reputation & Action Buttons */}
+                    {/* Header Row: Checkbox, Timestamp, Version Mode Badge, Reputation & Action Buttons */}
                     <div className="flex justify-between items-start gap-2 mb-2">
-                      <div className="flex items-center gap-2.5 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {/* Multi-select Checkbox */}
                         <button
                           type="button"
@@ -1192,6 +1290,12 @@ export default function Dashboard() {
                         >
                           <CheckSquare className={cn("w-3.5 h-3.5", isSelected ? "text-white" : "opacity-0")} />
                         </button>
+
+                        {/* Version / Mode Pill Badge */}
+                        <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-2xs", msgMode.msgBadgeBg)}>
+                          <span>{msgMode.icon}</span>
+                          <span>{msgMode.name}</span>
+                        </span>
 
                         <div className="text-xs font-medium text-slate-400">
                           {msg.createdAt?.seconds ? formatDistanceToNow(new Date(msg.createdAt.seconds * 1000), { addSuffix: true }) : "Just now"}
@@ -1590,7 +1694,9 @@ export default function Dashboard() {
       
       {/* Detail Modal */}
       <AnimatePresence>
-        {selectedMessage && (
+        {selectedMessage && (() => {
+          const selectedMode = getMessageMode(selectedMessage);
+          return (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1607,14 +1713,17 @@ export default function Dashboard() {
             >
               {/* Top Modal Header */}
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                  <span>Message Details</span>
+                <div className="flex items-center gap-2">
+                  <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-xs", selectedMode.msgBadgeBg)}>
+                    <span>{selectedMode.icon}</span>
+                    <span>{selectedMode.name}</span>
+                  </span>
                   {selectedMessage.archived && (
                     <span className="bg-amber-500/20 text-amber-500 text-[10px] px-2 py-0.5 rounded-full font-bold">
                       Archived
                     </span>
                   )}
-                </span>
+                </div>
                 <button 
                   onClick={() => setSelectedMessage(null)}
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -1623,17 +1732,18 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* Unique Whisper Signature Theme Story Preview Card */}
-              <div className="rounded-3xl overflow-hidden shadow-2xl p-[2px] bg-gradient-to-br from-purple-400 via-indigo-500 to-sky-400">
+              {/* Version Themed Story Preview Card */}
+              <div className={cn("rounded-3xl overflow-hidden shadow-2xl p-[2.5px] bg-gradient-to-br transition-all", selectedMode.msgModalBorder)}>
                 <div className="rounded-[22px] bg-slate-950/95 p-5 text-white flex flex-col min-h-[220px] backdrop-blur-xl relative overflow-hidden">
                   {/* Top Glowing Header Badge */}
                   <div className="flex items-center justify-center mb-3">
-                    <span className="bg-gradient-to-r from-indigo-500/30 to-purple-500/30 border border-purple-400/40 text-purple-200 text-[11px] font-bold tracking-wider px-3.5 py-1 rounded-full shadow-[0_0_12px_rgba(168,85,247,0.25)]">
-                      🔒 SECRET WHISPER • ANONYMOUS
+                    <span className={cn("bg-gradient-to-r text-[11px] font-bold tracking-wider px-3.5 py-1 rounded-full shadow-lg inline-flex items-center gap-1.5", selectedMode.msgModalBadge)}>
+                      <span>{selectedMode.icon}</span>
+                      <span>{selectedMode.badge.toUpperCase()} • 100% ANONYMOUS</span>
                     </span>
                   </div>
 
-                  <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-purple-500/30 to-transparent my-1"></div>
+                  <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent my-1"></div>
 
                   {/* Body with Message Content */}
                   <div className="py-4 flex-1 flex flex-col items-center justify-center text-center">
@@ -1649,7 +1759,7 @@ export default function Dashboard() {
                   {/* Cyber Security Seal */}
                   <div className="pt-2 text-center border-t border-slate-800/80">
                     <p className="text-[10px] font-mono tracking-widest text-slate-400">
-                      /// END-TO-END ENCRYPTED ///
+                      /// END-TO-END ENCRYPTED {selectedMode.tagLabel.toUpperCase()} ///
                     </p>
                   </div>
                 </div>
@@ -1746,7 +1856,8 @@ export default function Dashboard() {
               </div>
             </motion.div>
           </motion.div>
-        )}
+          );
+        })()}
       </AnimatePresence>
 
       {/* Sender Hint Details Modal (Suppressed if restricted globally) */}
@@ -1886,7 +1997,11 @@ export default function Dashboard() {
         displayName={dbUser.displayName}
         photoURL={dbUser.photoURL || avatarUrl}
         avatarUrl={dbUser.avatarUrl || avatarUrl}
-        publicUrl={publicUrl}
+        publicUrl={selectedShareUrl || publicUrl}
+        mode={selectedShareMode}
+        modeTitle={selectedShareMode?.name}
+        modePrompt={selectedShareMode?.prompt}
+        modeIcon={selectedShareMode?.icon}
       />
     </div>
   );

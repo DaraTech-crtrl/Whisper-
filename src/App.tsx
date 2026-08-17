@@ -106,6 +106,13 @@ export default function App() {
           <Route path="/auth" element={<Home />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/u/:username" element={<PublicProfile />} />
+          <Route path="/confess/:username" element={<PublicProfile />} />
+          <Route path="/about/:username" element={<PublicProfile />} />
+          <Route path="/ask/:username" element={<PublicProfile />} />
+          <Route path="/opinion/:username" element={<PublicProfile />} />
+          <Route path="/crush/:username" element={<PublicProfile />} />
+          <Route path="/compliment/:username" element={<PublicProfile />} />
+          <Route path="/roast/:username" element={<PublicProfile />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

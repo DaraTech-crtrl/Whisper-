@@ -2,21 +2,19 @@ import React from "react";
 import { motion } from "motion/react";
 import { 
   Inbox, 
-  Copy, 
-  Check, 
-  Share2, 
   Filter, 
   Archive, 
   ShieldCheck, 
   Sparkles, 
   Lock, 
-  ArrowRight,
-  ExternalLink
+  ArrowRight
 } from "lucide-react";
 
 interface EmptyStateProps {
   variant: "inbox" | "archived" | "filter";
   selectedTag?: string;
+  selectedMode?: string;
+  filterLabel?: string;
   username?: string;
   onCopyLink?: () => void;
   onResetFilter?: () => void;
@@ -27,31 +25,14 @@ interface EmptyStateProps {
 export default function EmptyState({
   variant,
   selectedTag = "ALL",
+  selectedMode,
+  filterLabel,
   username,
-  onCopyLink,
   onResetFilter,
-  onSwitchToActive,
-  copied = false
+  onSwitchToActive
 }: EmptyStateProps) {
-  const shareUrl = username ? `${window.location.origin}/u/${username}` : "";
-
-  const handleNativeShare = async () => {
-    if (navigator.share && shareUrl) {
-      try {
-        await navigator.share({
-          title: "Send me anonymous messages on Whisper!",
-          text: `Ask me anything or send a secret confession anonymously on Whisper! 🤫🔒`,
-          url: shareUrl,
-        });
-      } catch (err) {
-        // User dismissed share dialog
-      }
-    } else if (onCopyLink) {
-      onCopyLink();
-    }
-  };
-
   if (variant === "filter") {
+    const activeFilterDisplay = filterLabel || (selectedMode && selectedMode !== "ALL" ? selectedMode : selectedTag);
     return (
       <motion.div 
         initial={{ opacity: 0, y: 15 }}
@@ -63,10 +44,10 @@ export default function EmptyState({
           <Filter className="w-8 h-8" />
         </div>
         <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-          No messages in this category
+          No messages match this filter
         </h3>
         <p className="text-slate-500 dark:text-slate-400 text-xs max-w-sm mx-auto mt-1.5 leading-relaxed">
-          No confessions or questions match the <span className="font-semibold text-indigo-600 dark:text-indigo-400">"{selectedTag}"</span> filter.
+          No messages found for <span className="font-semibold text-indigo-600 dark:text-indigo-400">"{activeFilterDisplay}"</span>.
         </p>
 
         {onResetFilter && (
@@ -169,53 +150,8 @@ export default function EmptyState({
         You haven't received any anonymous messages yet. Share your private link on your Instagram bio, WhatsApp status, or Twitter to invite confessions and secret questions!
       </p>
 
-      {/* Action Buttons */}
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-        {onCopyLink && (
-          <button
-            id="empty-state-copy-link-btn"
-            onClick={onCopyLink}
-            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/25 transition-all active:scale-95"
-          >
-            {copied ? (
-              <>
-                <Check className="w-4 h-4 text-emerald-300" />
-                <span>Link Copied!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4" />
-                <span>Copy Whisper Link</span>
-              </>
-            )}
-          </button>
-        )}
-
-        <button
-          id="empty-state-share-social-btn"
-          onClick={handleNativeShare}
-          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 shadow-sm transition-all active:scale-95"
-        >
-          <Share2 className="w-4 h-4 text-indigo-500" />
-          <span>Share Link</span>
-        </button>
-
-        {username && (
-          <a
-            id="empty-state-preview-profile-link"
-            href={`/u/${username}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-          >
-            <span>Preview Profile</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        )}
-      </div>
-
       {/* Security & Feature Badges */}
-      <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+      <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
         <div className="flex items-start gap-2.5 p-2 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
           <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
           <div className="text-[11px] leading-tight">

@@ -1,3 +1,5 @@
+import { WhisperMode, getMessageMode } from "./whisperModes";
+
 export type ProfileCardTheme = "obsidian" | "neon" | "velvet" | "sunset" | "cyberpunk";
 
 export interface ProfileShareCardOptions {
@@ -340,16 +342,24 @@ export async function generateProfileShareCard(options: ProfileShareCardOptions)
  * Cyber-Encrypted Frosted Glass, and bold typography. Completely distinct from NGL.
  */
 
-interface ShareCardOptions {
+export interface ShareCardOptions {
   text: string;
   reaction?: string;
   mood?: string;
   publicUrl?: string;
   username?: string;
+  mode?: WhisperMode | string;
+  theme?: ProfileCardTheme;
 }
 
 export async function generateShareImageBlob(options: ShareCardOptions): Promise<{ blob: Blob; dataUrl: string }> {
-  const { text, reaction, mood } = options;
+  const { text, reaction, mood, mode: rawMode, theme } = options;
+
+  const activeMode: WhisperMode = typeof rawMode === "object" && rawMode !== null
+    ? rawMode
+    : getMessageMode(typeof rawMode === "string" ? { mode: rawMode } : null);
+
+  const activeTheme = theme || activeMode.themeStyle || "obsidian";
 
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
@@ -360,7 +370,7 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
     throw new Error("Canvas 2D context not available");
   }
 
-  // 1. Deep Midnight Obsidian Noir Canvas Background
+  // 1. Deep Midnight Canvas Background
   const bgGrad = ctx.createLinearGradient(0, 0, 1080, 1920);
   bgGrad.addColorStop(0, "#08090e");
   bgGrad.addColorStop(0.5, "#0b0d14");
@@ -368,26 +378,78 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, 1080, 1920);
 
-  // 2. Cosmic Ambient Aurora Glows (Atmospheric depth)
-  // Top-Right Electric Violet Aurora
+  // 2. Dynamic Ambient Aurora Glows matching mode
+  const modeGlowThemes: Record<string, {
+    tr: string;
+    bl: string;
+    center: string;
+    strokeColors: [string, string, string, string];
+    badgeBorder: string;
+    badgeGlow: string;
+  }> = {
+    obsidian: {
+      tr: "rgba(147, 51, 234, 0.28)",
+      bl: "rgba(79, 70, 229, 0.25)",
+      center: "rgba(168, 85, 247, 0.15)",
+      strokeColors: ["#c084fc", "#818cf8", "#38bdf8", "#a855f7"],
+      badgeBorder: "rgba(192, 132, 252, 0.45)",
+      badgeGlow: "rgba(192, 132, 252, 0.8)"
+    },
+    neon: {
+      tr: "rgba(236, 72, 153, 0.32)",
+      bl: "rgba(168, 85, 247, 0.28)",
+      center: "rgba(244, 63, 94, 0.18)",
+      strokeColors: ["#f43f5e", "#d946ef", "#ec4899", "#a855f7"],
+      badgeBorder: "rgba(244, 114, 182, 0.45)",
+      badgeGlow: "rgba(244, 114, 182, 0.8)"
+    },
+    velvet: {
+      tr: "rgba(244, 63, 94, 0.32)",
+      bl: "rgba(217, 70, 239, 0.25)",
+      center: "rgba(251, 113, 133, 0.18)",
+      strokeColors: ["#fb7185", "#f43f5e", "#e11d48", "#c084fc"],
+      badgeBorder: "rgba(251, 113, 133, 0.45)",
+      badgeGlow: "rgba(251, 113, 133, 0.8)"
+    },
+    sunset: {
+      tr: "rgba(249, 115, 22, 0.32)",
+      bl: "rgba(234, 88, 12, 0.25)",
+      center: "rgba(245, 158, 11, 0.18)",
+      strokeColors: ["#f97316", "#fb923c", "#fbbf24", "#ea580c"],
+      badgeBorder: "rgba(251, 146, 60, 0.45)",
+      badgeGlow: "rgba(251, 146, 60, 0.8)"
+    },
+    cyberpunk: {
+      tr: "rgba(6, 182, 212, 0.32)",
+      bl: "rgba(20, 184, 166, 0.25)",
+      center: "rgba(56, 189, 248, 0.18)",
+      strokeColors: ["#22d3ee", "#06b6d4", "#14b8a6", "#38bdf8"],
+      badgeBorder: "rgba(34, 211, 238, 0.45)",
+      badgeGlow: "rgba(34, 211, 238, 0.8)"
+    }
+  };
+
+  const glowTheme = modeGlowThemes[activeTheme] || modeGlowThemes.obsidian;
+
+  // Top-Right Aurora
   const glowTR = ctx.createRadialGradient(880, 260, 40, 880, 260, 580);
-  glowTR.addColorStop(0, "rgba(147, 51, 234, 0.28)");
-  glowTR.addColorStop(0.5, "rgba(99, 102, 241, 0.12)");
+  glowTR.addColorStop(0, glowTheme.tr);
+  glowTR.addColorStop(0.5, "rgba(99, 102, 241, 0.08)");
   glowTR.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = glowTR;
   ctx.fillRect(0, 0, 1080, 1920);
 
-  // Bottom-Left Cyan / Deep Indigo Nebula
+  // Bottom-Left Aurora
   const glowBL = ctx.createRadialGradient(200, 1600, 50, 200, 1600, 650);
-  glowBL.addColorStop(0, "rgba(79, 70, 229, 0.25)");
-  glowBL.addColorStop(0.5, "rgba(14, 165, 233, 0.10)");
+  glowBL.addColorStop(0, glowTheme.bl);
+  glowBL.addColorStop(0.5, "rgba(14, 165, 233, 0.08)");
   glowBL.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = glowBL;
   ctx.fillRect(0, 0, 1080, 1920);
 
   // Center subtle back-glow behind card
   const centerGlow = ctx.createRadialGradient(540, 960, 120, 540, 960, 600);
-  centerGlow.addColorStop(0, "rgba(168, 85, 247, 0.15)");
+  centerGlow.addColorStop(0, glowTheme.center);
   centerGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = centerGlow;
   ctx.fillRect(0, 0, 1080, 1920);
@@ -434,15 +496,15 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
 
   // 4. Draw Glowing Neon Gradient Border (Underlayer)
   ctx.save();
-  ctx.shadowColor = "rgba(139, 92, 246, 0.45)";
+  ctx.shadowColor = glowTheme.badgeGlow;
   ctx.shadowBlur = 40;
   ctx.shadowOffsetY = 12;
 
   const neonStroke = ctx.createLinearGradient(cardX, cardY, cardX + cardW, cardY + totalCardH);
-  neonStroke.addColorStop(0, "#c084fc"); // Neon Purple
-  neonStroke.addColorStop(0.35, "#818cf8"); // Electric Indigo
-  neonStroke.addColorStop(0.7, "#38bdf8"); // Sky Blue / Cyan
-  neonStroke.addColorStop(1, "#a855f7"); // Vivid Violet
+  neonStroke.addColorStop(0, glowTheme.strokeColors[0]);
+  neonStroke.addColorStop(0.35, glowTheme.strokeColors[1]);
+  neonStroke.addColorStop(0.7, glowTheme.strokeColors[2]);
+  neonStroke.addColorStop(1, glowTheme.strokeColors[3]);
 
   ctx.strokeStyle = neonStroke;
   ctx.lineWidth = 4.5;
@@ -469,8 +531,9 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
   ctx.stroke();
   ctx.restore();
 
-  // 6. Header Section: Glowing Badge ("🔒 SECRET WHISPER")
-  const badgeW = 480;
+  // 6. Header Section: Glowing Badge
+  const badgeLabel = `${activeMode.icon} ${activeMode.badge.toUpperCase()} • 100% ANONYMOUS`;
+  const badgeW = Math.min(620, Math.max(480, badgeLabel.length * 15));
   const badgeH = 68;
   const badgeX = 540 - badgeW / 2;
   const badgeY = cardY + 42;
@@ -478,33 +541,33 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
   ctx.save();
   // Badge pill background
   const badgeBg = ctx.createLinearGradient(badgeX, badgeY, badgeX + badgeW, badgeY);
-  badgeBg.addColorStop(0, "rgba(99, 102, 241, 0.3)");
-  badgeBg.addColorStop(1, "rgba(168, 85, 247, 0.3)");
+  badgeBg.addColorStop(0, "rgba(255, 255, 255, 0.08)");
+  badgeBg.addColorStop(1, "rgba(255, 255, 255, 0.04)");
   ctx.fillStyle = badgeBg;
   drawRoundedRect(ctx, badgeX, badgeY, badgeW, badgeH, 34);
   ctx.fill();
 
   // Badge border
-  ctx.strokeStyle = "rgba(192, 132, 252, 0.45)";
+  ctx.strokeStyle = glowTheme.badgeBorder;
   ctx.lineWidth = 1.5;
   drawRoundedRect(ctx, badgeX, badgeY, badgeW, badgeH, 34);
   ctx.stroke();
 
   // Badge Text
   ctx.fillStyle = "#ffffff";
-  ctx.font = `800 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  ctx.font = `800 23px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(192, 132, 252, 0.8)";
+  ctx.shadowColor = glowTheme.badgeGlow;
   ctx.shadowBlur = 12;
-  ctx.fillText("🔒 SECRET WHISPER • 100% ANONYMOUS", 540, badgeY + badgeH / 2);
+  ctx.fillText(badgeLabel, 540, badgeY + badgeH / 2);
   ctx.restore();
 
   // Decorative sleek line under header
   ctx.save();
   const divGrad = ctx.createLinearGradient(cardX + 80, 0, cardX + cardW - 80, 0);
   divGrad.addColorStop(0, "rgba(255, 255, 255, 0)");
-  divGrad.addColorStop(0.5, "rgba(147, 51, 234, 0.4)");
+  divGrad.addColorStop(0.5, glowTheme.strokeColors[0] + "66");
   divGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
   ctx.strokeStyle = divGrad;
   ctx.lineWidth = 1.5;
@@ -553,7 +616,7 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
   ctx.font = `600 20px -apple-system, BlinkMacSystemFont, "SF Mono", Menlo, Consolas, monospace`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("/// END-TO-END ENCRYPTED CONFESSION ///", 540, sealY);
+  ctx.fillText(`/// END-TO-END ENCRYPTED ${activeMode.tagLabel.toUpperCase()} ///`, 540, sealY);
   ctx.restore();
 
   // 10. Bottom Story Canvas Branding (Unique Whisper Neon Emblem)

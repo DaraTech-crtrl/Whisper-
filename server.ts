@@ -7,7 +7,7 @@ import webpush from "web-push";
 dotenv.config();
 
 // VAPID keys for Web Push Notifications (works in background when app is closed / locked)
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "BMePyW-3IbjfHlFbKuYnq6p522JRTg0xf9XopVbFC4-79whD7MQdN4f5WdQRYox_pVi645CXkIdHTEaxL8VcauA";
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || process.env.VITE_FIREBASE_VAPID_KEY || "BOy5oVBmsK0d_Dzb1VWy6GvMqDJU57R3G_ueIExeQP5Px_63N33tBECpy2TjaXXEDBJGFjR11FIJMeh4M7Ep5Hk";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "Ks5r5RskFAKq28z2wl1FkLjY0jfhrTXEBnCOdPlXqaY";
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:admin@whisper.runflix.name.ng";
 

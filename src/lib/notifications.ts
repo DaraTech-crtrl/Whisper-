@@ -5,7 +5,8 @@ import { app, db } from "./firebase";
 // Web Push VAPID Public Key for Whisper Background Push Service
 export const VAPID_PUBLIC_KEY = 
   (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY || 
-  "BMePyW-3IbjfHlFbKuYnq6p522JRTg0xf9XopVbFC4-79whD7MQdN4f5WdQRYox_pVi645CXkIdHTEaxL8VcauA";
+  (import.meta as any).env?.VITE_FIREBASE_VAPID_KEY ||
+  "BOy5oVBmsK0d_Dzb1VWy6GvMqDJU57R3G_ueIExeQP5Px_63N33tBECpy2TjaXXEDBJGFjR11FIJMeh4M7Ep5Hk";
 
 export type NotificationPermissionState = "granted" | "denied" | "default" | "unsupported";
 
@@ -452,24 +453,58 @@ export function displayIncomingWhisperNotification(modeName: string = "Secret Wh
   if (Notification.permission !== "granted") return;
 
   const title = `New ${modeName} Received! ${modeIcon}`;
-  const options: NotificationOptions = {
+  const options: NotificationOptions & { vibrate?: number[] } = {
     body: `You have a new encrypted anonymous ${modeName.toLowerCase()}. Click to open and read.`,
     icon: "https://whisper.runflix.name.ng/android-chrome-192x192.png",
     badge: "https://whisper.runflix.name.ng/favicon-32x32.png",
     tag: "incoming-whisper-" + Date.now(),
+    vibrate: [200, 100, 200],
     data: {
       url: "/dashboard"
     }
   };
 
-  try {
-    const notif = new Notification(title, options);
-    notif.onclick = () => {
-      window.focus();
-      window.location.href = "/dashboard";
-    };
-  } catch (e) {
-    console.warn("Direct Notification notice:", e);
+  // Try Service Worker showNotification first (standard on mobile browsers / PWAs)
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js").then((reg) => {
+      if (reg && reg.showNotification) {
+        reg.showNotification(title, options).catch(() => {
+          try {
+            const notif = new Notification(title, options);
+            notif.onclick = () => {
+              window.focus();
+              window.location.href = "/dashboard";
+            };
+          } catch (e) {}
+        });
+      } else {
+        try {
+          const notif = new Notification(title, options);
+          notif.onclick = () => {
+            window.focus();
+            window.location.href = "/dashboard";
+          };
+        } catch (e) {}
+      }
+    }).catch(() => {
+      try {
+        const notif = new Notification(title, options);
+        notif.onclick = () => {
+          window.focus();
+          window.location.href = "/dashboard";
+        };
+      } catch (e) {}
+    });
+  } else {
+    try {
+      const notif = new Notification(title, options);
+      notif.onclick = () => {
+        window.focus();
+        window.location.href = "/dashboard";
+      };
+    } catch (e) {
+      console.warn("Direct Notification notice:", e);
+    }
   }
 }
 

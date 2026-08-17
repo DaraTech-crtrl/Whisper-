@@ -53,6 +53,18 @@ service cloud.firestore {
           !('onboardingCompleted' in data) || (data.onboardingCompleted is bool)
         )
         && (
+          !('notificationsEnabled' in data) || (data.notificationsEnabled is bool)
+        )
+        && (
+          !('notificationSound' in data) || (data.notificationSound is bool)
+        )
+        && (
+          !('fcmToken' in data) || (data.fcmToken is string && data.fcmToken.size() <= 1024)
+        )
+        && (
+          !('fcmTokens' in data) || (data.fcmTokens is list && data.fcmTokens.size() <= 20)
+        )
+        && (
           !('isLocked' in data) || (data.isLocked is bool)
         )
     }

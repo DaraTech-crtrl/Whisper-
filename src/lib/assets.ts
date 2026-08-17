@@ -1,10 +1,16 @@
 /// <reference types="vite/client" />
 
-export const BUILD_VERSION = (import.meta as any).env?.VITE_BUILD_VERSION || Date.now().toString();
+export const BUILD_VERSION = (import.meta as any).env?.VITE_BUILD_VERSION || '1.0.0';
 
 export const BASE_ASSET_URL = 'https://whisper.runflix.name.ng';
 
 export function getAssetUrl(path: string): string {
-  const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${BASE_ASSET_URL}${cleanPath}?v=${BUILD_VERSION}`;
+  if (!path) return `${BASE_ASSET_URL}/android-chrome-192x192.png?v=${BUILD_VERSION}`;
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+  return `${BASE_ASSET_URL}/${cleanPath}?v=${BUILD_VERSION}`;
 }
+
+

@@ -137,6 +137,18 @@ export default function PublicProfile() {
       
       await addDoc(collection(db, "users", profile.uid, "messages"), payloadData);
 
+      // Trigger Cloud Messaging alert (non-blocking)
+      fetch("/api/notify-whisper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          receiverId: profile.uid,
+          mode: currentMode.name,
+          modeIcon: currentMode.icon,
+          username: profile.username
+        })
+      }).catch(e => console.warn("Notification dispatch notice:", e));
+
       setSent(true);
       setMessage("");
       setUnlocksAtData("");

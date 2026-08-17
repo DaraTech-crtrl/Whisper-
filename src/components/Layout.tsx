@@ -7,6 +7,7 @@ import { useAuthStore } from "../lib/store";
 import { getAssetUrl } from "../lib/assets";
 import LoadingScreen from "./LoadingScreen";
 import Maintenance from "../pages/Maintenance";
+import AppUpdateBanner from "./AppUpdateBanner";
 
 export interface SystemSettings {
   maintenanceMode?: boolean;
@@ -88,6 +89,9 @@ export default function Layout() {
       <main className="flex-1 overflow-y-auto w-full relative flex flex-col justify-center">
         <Outlet />
       </main>
+
+      {/* PWA Auto-Update / Version Update Notification Banner */}
+      <AppUpdateBanner />
     </div>
   );
 }

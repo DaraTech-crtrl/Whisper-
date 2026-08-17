@@ -42,7 +42,17 @@ import {
   Search,
   Info,
   Camera,
-  Upload
+  Upload,
+  Bell,
+  BellRing,
+  BellOff,
+  Volume2,
+  VolumeX,
+  Radio,
+  Sparkles,
+  Share,
+  PlusSquare,
+  RefreshCw
 } from "lucide-react";
 import UserAvatar from "../components/UserAvatar";
 import { uploadToCloudinary } from "../lib/cloudinary";
@@ -55,9 +65,24 @@ import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { generateShareImageBlob } from "../lib/canvasImage";
 import EmptyState from "../components/EmptyState";
 import ShareCardModal from "../components/ShareCardModal";
+import IOSInstallGuideModal from "../components/IOSInstallGuideModal";
 import WhisperCarousel from "../components/WhisperCarousel";
 import { WhisperMode, WHISPER_MODES, getModeUrl, getMessageMode } from "../lib/whisperModes";
 import localforage from "localforage";
+import { 
+  enablePushNotifications, 
+  disablePushNotifications, 
+  triggerTestNotification, 
+  displayIncomingWhisperNotification, 
+  getNotificationPermissionStatus, 
+  checkNotificationSupport, 
+  subscribeToForegroundFCM,
+  NotificationPermissionState,
+  isIOS,
+  isStandalonePWA
+} from "../lib/notifications";
+import { usePWAInstall } from "../lib/usePWAInstall";
+import { usePWAUpdate } from "../lib/usePWAUpdate";
 
 export interface Message {
   id: string;
@@ -199,6 +224,40 @@ export default function Dashboard() {
   const [activeFeaturedModeId, setActiveFeaturedModeId] = useState<string>("anonymous");
   const [showOnboarding, setShowOnboarding] = useState(dbUser?.onboardingCompleted !== true);
 
+  // PWA and iOS Install state
+  const pwa = usePWAInstall();
+  const pwaUpdate = usePWAUpdate();
+  const [showIOSModal, setShowIOSModal] = useState(false);
+
+  // Firebase Cloud Messaging & Push Notification state
+  const [notifPermission, setNotifPermission] = useState<NotificationPermissionState>(getNotificationPermissionStatus());
+  const [isPushToggling, setIsPushToggling] = useState(false);
+  const [isTestingNotif, setIsTestingNotif] = useState(false);
+  const [notifStatusMsg, setNotifStatusMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [foregroundToast, setForegroundToast] = useState<{ show: boolean; title: string; body: string; messageId?: string; mode?: string } | null>(null);
+  const hasLoadedInitialMsgsRef = useRef(false);
+  const prevMsgIdsRef = useRef<Set<string>>(new Set());
+
+  // Listen for permission updates and foreground FCM messages
+  useEffect(() => {
+    setNotifPermission(getNotificationPermissionStatus());
+
+    const unsubForeground = subscribeToForegroundFCM((payload) => {
+      const title = payload.notification?.title || payload.data?.title || "New Whisper Alert! 🤫";
+      const body = payload.notification?.body || payload.data?.body || "You just received a new anonymous whisper!";
+      setForegroundToast({
+        show: true,
+        title,
+        body,
+        mode: payload.data?.mode
+      });
+    });
+
+    return () => {
+      if (typeof unsubForeground === "function") unsubForeground();
+    };
+  }, []);
+
   // Global settings listener (for restricting sender hints display)
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "systemSettings", "global"), (snap) => {
@@ -309,6 +368,35 @@ export default function Dashboard() {
           }
         }
       });
+
+      // Realtime incoming whisper alert
+      if (hasLoadedInitialMsgsRef.current) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === "added") {
+            const data = change.doc.data();
+            const msgId = change.doc.id;
+            if (!prevMsgIdsRef.current.has(msgId) && !data.read) {
+              const msgMode = getMessageMode({ id: msgId, ...data } as any);
+              if (dbUser?.notificationsEnabled !== false) {
+                displayIncomingWhisperNotification(msgMode.name, msgMode.icon);
+              }
+              setForegroundToast({
+                show: true,
+                title: `New ${msgMode.name} Received! ${msgMode.icon}`,
+                body: "Someone sent you a secret anonymous whisper. Tap to open and read it.",
+                messageId: msgId,
+                mode: msgMode.name
+              });
+            }
+          }
+        });
+      } else {
+        hasLoadedInitialMsgsRef.current = true;
+      }
+
+      const idSet = new Set<string>();
+      msgs.forEach(m => idSet.add(m.id));
+      prevMsgIdsRef.current = idSet;
 
       setMessages(msgs);
       localforage.setItem(cacheKey, msgs).catch(console.error);
@@ -754,6 +842,80 @@ export default function Dashboard() {
     }
   };
 
+  const handleEnablePush = async () => {
+    if (!user?.uid) return;
+    setIsPushToggling(true);
+    setNotifStatusMsg(null);
+    try {
+      const res = await enablePushNotifications(user.uid);
+      setNotifPermission(getNotificationPermissionStatus());
+      if (res.success) {
+        setNotifStatusMsg({
+          text: "Push notifications successfully enabled! You will receive alerts when new whispers arrive.",
+          type: "success"
+        });
+      } else if (res.needsIOSInstall) {
+        setShowIOSModal(true);
+        setNotifStatusMsg({
+          text: "iPhone / iPad requires adding Whisper to your Home Screen to receive push notifications.",
+          type: "error"
+        });
+      } else {
+        setNotifStatusMsg({
+          text: res.error || "Failed to enable notifications. Please grant notification permission in your browser.",
+          type: "error"
+        });
+      }
+    } catch (err: any) {
+      setNotifStatusMsg({ text: err.message || "Failed to enable push notifications.", type: "error" });
+    } finally {
+      setIsPushToggling(false);
+    }
+  };
+
+  const handleDisablePush = async () => {
+    if (!user?.uid) return;
+    setIsPushToggling(true);
+    setNotifStatusMsg(null);
+    try {
+      const res = await disablePushNotifications(user.uid, dbUser?.fcmToken);
+      if (res.success) {
+        setNotifStatusMsg({
+          text: "Push notifications disabled on this account.",
+          type: "success"
+        });
+      } else {
+        setNotifStatusMsg({
+          text: res.error || "Failed to disable push notifications.",
+          type: "error"
+        });
+      }
+    } catch (err: any) {
+      setNotifStatusMsg({ text: err.message || "Failed to disable push notifications.", type: "error" });
+    } finally {
+      setIsPushToggling(false);
+    }
+  };
+
+  const handleSendTestNotification = async () => {
+    setIsTestingNotif(true);
+    setNotifStatusMsg(null);
+    try {
+      await triggerTestNotification(dbUser?.username || "friend");
+      setNotifStatusMsg({
+        text: "Test notification dispatched! Tap the banner or browser alert to jump right into your dashboard.",
+        type: "success"
+      });
+    } catch (err: any) {
+      setNotifStatusMsg({
+        text: "Failed to dispatch test notification. Ensure browser notifications are allowed.",
+        type: "error"
+      });
+    } finally {
+      setIsTestingNotif(false);
+    }
+  };
+
   if (dbUser?.isLocked) {
     return (
       <div className="p-6 py-12 max-w-md mx-auto min-h-screen flex flex-col justify-center items-center text-center">
@@ -776,6 +938,57 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 py-8 max-w-md mx-auto space-y-6 min-h-screen pb-28">
+      {/* Realtime In-App Incoming Whisper Notification Toast */}
+      <AnimatePresence>
+        {foregroundToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -25, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -25, scale: 0.95 }}
+            className="fixed top-4 left-4 right-4 max-w-md mx-auto z-50 pointer-events-auto"
+          >
+            <div className="bg-white dark:bg-slate-900 border-2 border-indigo-500/40 rounded-2xl p-4 shadow-2xl flex items-center justify-between gap-3 backdrop-blur-md">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 text-xl shadow-xs">
+                  🤫
+                </div>
+                <div className="min-w-0">
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                    {foregroundToast.title}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    {foregroundToast.body}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    setActiveTab("inbox");
+                    setInboxView("active");
+                    const targetId = foregroundToast.messageId;
+                    setForegroundToast(null);
+                    if (targetId) {
+                      const found = messages.find(m => m.id === targetId);
+                      if (found) handleMessageClick(found);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm"
+                >
+                  View
+                </button>
+                <button
+                  onClick={() => setForegroundToast(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {showOnboarding && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
           <motion.div
@@ -1683,11 +1896,306 @@ export default function Dashboard() {
               <button 
                 type="submit"
                 disabled={isUpdatingProfile || (!displayName.trim())}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50 mt-2"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50 mt-2 cursor-pointer"
               >
                 {isUpdatingProfile ? "Saving..." : "Save Profile"}
               </button>
             </form>
+          </div>
+
+          {/* Progressive Web App (PWA) Card */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold">App Experience (PWA)</h2>
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 rounded-md uppercase tracking-wider">
+                    Offline & Standalone
+                  </span>
+                </div>
+                <p className="text-sm text-slate-500 mt-1">
+                  Install Whisper directly to your phone or desktop home screen for a fast, native app experience with zero browser bars.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-sm flex items-center gap-2">
+                    <span>{pwa.isInstalled ? "App Installed on Device" : "Installable Web App"}</span>
+                    {pwa.isInstalled && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        Running Standalone
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {pwa.isInstalled 
+                      ? "Whisper is active on your device with full home screen capabilities." 
+                      : pwa.isIOSDevice 
+                      ? "iPhone / iPad requires adding to Home Screen for background alerts." 
+                      : "Add to home screen or desktop dock for 1-tap encrypted messaging."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="w-full sm:w-auto flex items-center gap-2">
+                {pwa.isInstalled ? (
+                  <div className="px-3.5 py-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Installed
+                  </div>
+                ) : pwa.isIOSDevice ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowIOSModal(true)}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <PlusSquare className="w-4 h-4" />
+                    Add to Home Screen (iOS)
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => pwa.triggerInstall()}
+                    disabled={!pwa.isInstallable}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Download className="w-4 h-4" />
+                    {pwa.isInstallable ? "Install Whisper App" : "App Installed / Ready"}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Version & Auto-Update Section */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-indigo-50/50 dark:bg-indigo-950/20 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/40">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                    <RefreshCw className={`w-4 h-4 ${pwaUpdate.isChecking ? "animate-spin" : ""}`} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <span>App Version & Updates</span>
+                      {pwaUpdate.updateAvailable ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 animate-pulse">
+                          Update Ready
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                          Up to Date
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {pwaUpdate.updateStatusText || (pwaUpdate.lastChecked ? `Last checked: ${pwaUpdate.lastChecked.toLocaleTimeString()}` : "Whisper auto-syncs website changes in the background.")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  {pwaUpdate.updateAvailable ? (
+                    <button
+                      type="button"
+                      onClick={() => pwaUpdate.applyUpdate()}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer animate-bounce"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Update App Now
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => pwaUpdate.checkForUpdate()}
+                      disabled={pwaUpdate.isChecking}
+                      className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${pwaUpdate.isChecking ? "animate-spin text-indigo-600" : ""}`} />
+                      {pwaUpdate.isChecking ? "Checking..." : "Check for Updates"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Auto-update Toggle */}
+              <div className="flex items-center justify-between px-2 text-xs">
+                <span className="text-slate-600 dark:text-slate-400 font-medium">
+                  Auto-install new updates in background
+                </span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pwaUpdate.autoUpdate}
+                    onChange={(e) => pwaUpdate.toggleAutoUpdate(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Firebase Cloud Messaging & Push Notifications Section */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold">Push Notifications</h2>
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 rounded-md uppercase tracking-wider">
+                    FCM Alerts
+                  </span>
+                </div>
+                <p className="text-sm text-slate-500 mt-1">
+                  Receive instant browser & device push alerts whenever someone leaves you an anonymous whisper. Tap any notification to jump directly to your inbox.
+                </p>
+              </div>
+            </div>
+
+            {/* iOS Specific notice if in Safari browser tab */}
+            {pwa.isIOSDevice && !pwa.isInstalled && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>
+                    <strong>iOS Note:</strong> Apple requires adding Whisper to your Home Screen to unlock push notifications.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowIOSModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shrink-0 cursor-pointer"
+                >
+                  View 3-Step Guide
+                </button>
+              </div>
+            )}
+
+            {/* Notification Status Banner */}
+            <div className={cn(
+              "p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 transition-all",
+              (notifPermission === "granted" && dbUser?.notificationsEnabled !== false)
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200"
+                : notifPermission === "denied"
+                ? "bg-rose-500/10 border-rose-500/30 text-rose-900 dark:text-rose-200"
+                : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300"
+            )}>
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm",
+                  (notifPermission === "granted" && dbUser?.notificationsEnabled !== false)
+                    ? "bg-emerald-500 text-white" 
+                    : notifPermission === "denied"
+                    ? "bg-rose-500 text-white"
+                    : "bg-slate-200 dark:bg-slate-800 text-slate-500"
+                )}>
+                  {(notifPermission === "granted" && dbUser?.notificationsEnabled !== false) ? (
+                    <BellRing className="w-5 h-5 animate-pulse" />
+                  ) : notifPermission === "denied" ? (
+                    <BellOff className="w-5 h-5" />
+                  ) : (
+                    <Bell className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-bold text-sm flex items-center gap-2">
+                    <span>
+                      {(notifPermission === "granted" && dbUser?.notificationsEnabled !== false)
+                        ? "Notifications Active"
+                        : notifPermission === "denied"
+                        ? "Browser Permission Blocked"
+                        : "Notifications Inactive"}
+                    </span>
+                    {(notifPermission === "granted" && dbUser?.notificationsEnabled !== false) && (
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    )}
+                  </div>
+                  <p className="text-xs opacity-80 mt-0.5">
+                    {(notifPermission === "granted" && dbUser?.notificationsEnabled !== false)
+                      ? "Listening for incoming whispers with custom chime sound."
+                      : notifPermission === "denied"
+                      ? "Click the lock icon in your browser URL bar to Allow notifications."
+                      : "Enable to get notified immediately when friends whisper you."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="w-full sm:w-auto flex items-center gap-2">
+                {(notifPermission === "granted" && dbUser?.notificationsEnabled !== false) ? (
+                  <button
+                    type="button"
+                    onClick={handleDisablePush}
+                    disabled={isPushToggling}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 hover:bg-rose-500/10 hover:text-rose-600 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isPushToggling ? "Updating..." : "Disable"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleEnablePush}
+                    disabled={isPushToggling || notifPermission === "denied"}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                    {isPushToggling ? "Enabling..." : "Enable Push Notifications"}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Test Notification & Token Info */}
+            {(notifPermission === "granted" && dbUser?.notificationsEnabled !== false) && (
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl border border-slate-200/70 dark:border-slate-800">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      Test Alert & Jump to App
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Send a sample whisper notification to verify device sound chime and notification tap behavior.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendTestNotification}
+                    disabled={isTestingNotif}
+                    className="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0 border border-indigo-200/50 dark:border-indigo-800/50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    {isTestingNotif ? "Dispatching..." : "Send Test Notification"}
+                  </button>
+                </div>
+
+                {dbUser?.fcmToken && (
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-100/70 dark:bg-slate-800/40 text-[11px] text-slate-500 font-mono">
+                    <span className="truncate max-w-[220px]">
+                      FCM Token: {dbUser.fcmToken.slice(0, 14)}...{dbUser.fcmToken.slice(-6)}
+                    </span>
+                    <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full">
+                      Connected
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {notifStatusMsg && (
+              <div className={cn(
+                "p-3 rounded-xl text-xs font-medium",
+                notifStatusMsg.type === "success" 
+                  ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-500/20"
+                  : "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-500/20"
+              )}>
+                {notifStatusMsg.text}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2002,6 +2510,12 @@ export default function Dashboard() {
         modeTitle={selectedShareMode?.name}
         modePrompt={selectedShareMode?.prompt}
         modeIcon={selectedShareMode?.icon}
+      />
+
+      {/* iOS PWA Installation & Push Notification Modal */}
+      <IOSInstallGuideModal
+        isOpen={showIOSModal}
+        onClose={() => setShowIOSModal(false)}
       />
     </div>
   );

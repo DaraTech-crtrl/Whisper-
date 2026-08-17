@@ -165,7 +165,7 @@ export default function AdminDashboard() {
   const [isPurgingCache, setIsPurgingCache] = useState(false);
 
   // System Version & Health
-  const [currentVersion] = useState("v2.4.2");
+  const currentVersion = pwaUpdate.currentVersion || "Whisper v1.0.0";
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [dbLatency, setDbLatency] = useState<number | null>(null);
   const [isTestingLatency, setIsTestingLatency] = useState(false);

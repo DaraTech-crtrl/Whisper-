@@ -9,7 +9,7 @@ interface AppUpdateBannerProps {
 
 export default function AppUpdateBanner({ updateState }: AppUpdateBannerProps) {
   const fallbackHook = usePWAUpdate();
-  const { updateAvailable, applyUpdate, dismissUpdate, isChecking } = updateState || fallbackHook;
+  const { updateAvailable, applyUpdate, dismissUpdate, isChecking, remoteVersion } = updateState || fallbackHook;
 
   if (!updateAvailable) return null;
 
@@ -30,7 +30,7 @@ export default function AppUpdateBanner({ updateState }: AppUpdateBannerProps) {
               <div className="flex items-center gap-1.5">
                 <h4 className="font-bold text-sm text-white truncate">New Update Ready!</h4>
                 <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-500/30 text-indigo-300">
-                  v-latest
+                  {remoteVersion || "New Version"}
                 </span>
               </div>
               <p className="text-xs text-slate-300 truncate">

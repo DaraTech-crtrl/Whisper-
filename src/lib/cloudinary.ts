@@ -45,8 +45,18 @@ export async function compressImageToDataUrl(
 
 export async function uploadToCloudinary(file: File | Blob): Promise<string> {
   try {
+    // Client-side pre-compression to ~512x512 JPEG for sub-second ultra-fast uploads
+    let uploadBlob: Blob = file;
+    try {
+      const compressedDataUrl = await compressImageToDataUrl(file, 512, 512, 0.85);
+      const res = await fetch(compressedDataUrl);
+      uploadBlob = await res.blob();
+    } catch (compressErr) {
+      console.warn("Client-side pre-compression skipped, uploading original file:", compressErr);
+    }
+
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", uploadBlob, "avatar.jpg");
     formData.append("upload_preset", "ml_default");
 
     const response = await fetch("https://api.cloudinary.com/v1_1/esmkxmqd/image/upload", {
@@ -58,14 +68,14 @@ export async function uploadToCloudinary(file: File | Blob): Promise<string> {
       const errorData = await response.json().catch(() => ({}));
       const msg = errorData.error?.message || "Failed to upload image to Cloudinary";
       console.warn("Cloudinary upload failed, falling back to local compressed image storage:", msg);
-      return await compressImageToDataUrl(file);
+      return await compressImageToDataUrl(file, 512, 512, 0.85);
     }
 
     const data = await response.json();
     return data.secure_url || data.url;
   } catch (err) {
     console.warn("Cloudinary upload request error, falling back to compressed image storage:", err);
-    return await compressImageToDataUrl(file);
+    return await compressImageToDataUrl(file, 512, 512, 0.85);
   }
 }
 

@@ -79,6 +79,8 @@ service cloud.firestore {
 
       allow update: if (isSignedIn() && request.auth.uid == userId && incoming().uid == existing().uid)
         || (incoming().diff(existing()).affectedKeys().hasAny(['isLocked', 'updatedAt']) && (!('isLocked' in incoming()) || incoming().isLocked is bool));
+
+      allow delete: if isSignedIn() && request.auth.uid == userId;
     }
 
     function isValidMessage(data) {

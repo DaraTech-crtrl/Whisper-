@@ -15,6 +15,23 @@ export function usePWAUpdate() {
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
   const [updateStatusText, setUpdateStatusText] = useState<string | null>(null);
+  const [autoUpdate, setAutoUpdate] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("whisper_auto_update") !== "false";
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleAutoUpdate = useCallback((enabled?: boolean) => {
+    setAutoUpdate((prev) => {
+      const next = enabled !== undefined ? enabled : !prev;
+      try {
+        localStorage.setItem("whisper_auto_update", String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
 
   const waitingWorkerRef = useRef<ServiceWorker | null>(null);
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
@@ -223,11 +240,11 @@ export function usePWAUpdate() {
     updateAvailable,
     isChecking,
     lastChecked,
-    autoUpdate: false,
+    autoUpdate,
     updateStatusText,
     checkForUpdate: () => checkForUpdate(true),
     applyUpdate,
-    toggleAutoUpdate: (_enabled?: boolean) => {},
+    toggleAutoUpdate,
     dismissUpdate
   };
 }

@@ -9,6 +9,7 @@ import Layout from "./components/Layout";
 import Welcome from "./pages/Welcome";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import Settings from "./pages/Settings";
 import PublicProfile from "./pages/PublicProfile";
 import AdminDashboard from "./pages/AdminDashboard";
 import Maintenance from "./pages/Maintenance";
@@ -127,6 +128,7 @@ export default function App() {
           <Route path="/" element={<Welcome />} />
           <Route path="/auth" element={<Home />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/u/:username" element={<PublicProfile />} />
           <Route path="/confess/:username" element={<PublicProfile />} />
           <Route path="/about/:username" element={<PublicProfile />} />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { LogOut, Bell } from "lucide-react";
+import { LogOut, Bell, Settings } from "lucide-react";
 import { auth, db } from "../lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useAuthStore } from "../lib/store";
@@ -75,13 +75,22 @@ export default function Layout() {
             <span>Whisper</span>
           </Link>
           {user && (
-            <button 
-              onClick={handleLogout}
-              className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors cursor-pointer"
-              title="Log out"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <Link 
+                to="/settings"
+                className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors cursor-pointer"
+                title="Profile Settings"
+              >
+                <Settings className="w-5 h-5" />
+              </Link>
+              <button 
+                onClick={handleLogout}
+                className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-full transition-colors cursor-pointer"
+                title="Log out"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
           )}
         </header>
       )}

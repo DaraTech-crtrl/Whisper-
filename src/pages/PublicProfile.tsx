@@ -5,7 +5,8 @@ import { db } from "../lib/firebase";
 import { encryptMessage } from "../lib/crypto";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { captureSenderHint } from "../lib/senderHint";
-import { Send, CheckCircle2, AlertTriangle, Lock, Award, Watch } from "lucide-react";
+import { Send, CheckCircle2, AlertTriangle, Lock, Award, Watch, Clock, RefreshCw } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
 import LoadingScreen from "../components/LoadingScreen";
 import UserAvatar from "../components/UserAvatar";
@@ -162,6 +163,24 @@ export default function PublicProfile() {
     }
   };
 
+  // Calculate link pause status
+  const isPermanentlyPaused = profile?.isLinkPaused === true;
+  let isTemporarilyPaused = false;
+  let tempPauseTimeRemaining = "";
+
+  if (profile?.pauseUntil) {
+    const timeMs = profile.pauseUntil.seconds
+      ? profile.pauseUntil.seconds * 1000
+      : (profile.pauseUntil.toDate ? profile.pauseUntil.toDate().getTime() : new Date(profile.pauseUntil).getTime());
+
+    if (timeMs > Date.now()) {
+      isTemporarilyPaused = true;
+      tempPauseTimeRemaining = formatDistanceToNow(new Date(timeMs), { addSuffix: true });
+    }
+  }
+
+  const isLinkPaused = isPermanentlyPaused || isTemporarilyPaused;
+
   if (status === "loading") {
     return <LoadingScreen message="Whisper" subtext="Finding public profile..." fullScreen={false} />;
   }
@@ -241,6 +260,34 @@ export default function PublicProfile() {
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   This user account has been suspended by an administrator and cannot currently receive new messages.
                 </p>
+              </div>
+            ) : isLinkPaused ? (
+              <div className="p-6 bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-3xl text-center space-y-3.5 my-3 shadow-inner">
+                <div className="w-16 h-16 bg-slate-200/80 dark:bg-slate-800/80 rounded-full flex items-center justify-center mx-auto text-2xl">
+                  ✋
+                </div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-lg tracking-tight">
+                  Messages Paused
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-xs mx-auto leading-relaxed">
+                  @{profile.displayName || profile.username} has paused their link and is currently taking a break from receiving messages.
+                </p>
+                {isTemporarilyPaused && (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-xs font-semibold">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Unpauses {tempPauseTimeRemaining}</span>
+                  </div>
+                )}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Check Status
+                  </button>
+                </div>
               </div>
             ) : (
             <form onSubmit={handleSend} className="space-y-4">

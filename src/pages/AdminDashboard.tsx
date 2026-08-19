@@ -739,7 +739,7 @@ export default function AdminDashboard() {
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600" />
 
           <div className="text-center space-y-3">
-            <div className="w-16 h-16 bg-indigo-50 dark:bg-slate-800 border border-indigo-100 dark:border-indigo-500/30 rounded-2xl flex items-center justify-center mx-auto p-3 shadow-lg shadow-indigo-500/10">
+            <div className="w-16 h-16 bg-white border border-slate-100 dark:border-slate-800 rounded-2xl flex items-center justify-center mx-auto p-2 shadow-lg shadow-indigo-500/10">
               <img 
                 src={getAssetUrl("android-chrome-192x192.png")} 
                 alt="Whisper" 
@@ -896,7 +896,7 @@ export default function AdminDashboard() {
         {/* Sidebar Header */}
         <div className="p-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 bg-indigo-50 dark:bg-slate-800 rounded-2xl border border-indigo-100 dark:border-indigo-500/30 flex items-center justify-center p-2 shrink-0 shadow-sm">
+            <div className="w-10 h-10 bg-white rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-center p-1.5 shrink-0 shadow-sm">
               <img 
                 src={getAssetUrl("android-chrome-192x192.png")} 
                 alt="Whisper" 
@@ -1014,7 +1014,7 @@ export default function AdminDashboard() {
             >
               <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-indigo-50 dark:bg-slate-800 rounded-xl p-1 border border-indigo-200">
+                  <div className="w-8 h-8 bg-white rounded-xl p-1 border border-slate-200 dark:border-slate-800">
                     <img src={getAssetUrl("android-chrome-192x192.png")} alt="Whisper" className="w-full h-full object-contain" />
                   </div>
                   <span className="font-bold text-sm">Whisper Admin</span>

@@ -1,22 +1,17 @@
 import { WhisperMode, getMessageMode } from "./whisperModes";
 import { getAssetUrl } from "./assets";
-import { WHISPER_LOGO_DATA_URL } from "./logoBase64";
 
 export type ProfileCardTheme = "obsidian" | "neon" | "velvet" | "sunset" | "cyberpunk";
 
 async function loadLogoImage(): Promise<HTMLImageElement | null> {
   try {
+    const logoUrl = getAssetUrl("android-chrome-192x192.png");
     return await new Promise<HTMLImageElement | null>((resolve) => {
       const img = new Image();
+      img.crossOrigin = "anonymous";
       img.onload = () => resolve(img);
-      img.onerror = () => {
-        // Fallback to local url if data URI fails for any reason
-        const fallbackImg = new Image();
-        fallbackImg.onload = () => resolve(fallbackImg);
-        fallbackImg.onerror = () => resolve(null);
-        fallbackImg.src = getAssetUrl("android-chrome-192x192.png");
-      };
-      img.src = WHISPER_LOGO_DATA_URL;
+      img.onerror = () => resolve(null);
+      img.src = logoUrl;
     });
   } catch {
     return null;

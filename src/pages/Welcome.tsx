@@ -78,11 +78,11 @@ export default function Welcome() {
 
             <div className="w-28 h-28 mb-8 relative flex items-center justify-center">
               <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500 to-purple-500 blur-2xl rounded-full opacity-40 animate-pulse"></div>
-              <div className="relative w-full h-full bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl shadow-indigo-500/20 flex items-center justify-center border-2 border-indigo-100 dark:border-slate-800 p-2.5 ring-4 ring-indigo-500/10 overflow-hidden">
+              <div className="relative w-full h-full bg-white rounded-[2.5rem] shadow-2xl shadow-indigo-500/20 flex items-center justify-center border-2 border-indigo-100 dark:border-slate-800 p-3 ring-4 ring-indigo-500/10">
                 <img
                   src={getAssetUrl("android-chrome-192x192.png")}
                   alt="Whisper Logo"
-                  className="w-full h-full object-cover rounded-2xl"
+                  className="w-20 h-20 object-contain rounded-2xl"
                   referrerPolicy="no-referrer"
                 />
               </div>

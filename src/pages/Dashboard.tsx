@@ -24,7 +24,6 @@ import {
   ShieldAlert,
   Archive,
   ArchiveRestore,
-  Tag as TagIcon,
   CheckSquare,
   Square,
   CheckCheck,
@@ -54,7 +53,13 @@ import {
   PlusSquare,
   RefreshCw,
   ChevronRight,
-  MessageSquare
+  MessageSquare,
+  Home,
+  Send,
+  ExternalLink,
+  Shuffle,
+  Pencil,
+  RotateCcw
 } from "lucide-react";
 import UserAvatar from "../components/UserAvatar";
 import { uploadToCloudinary } from "../lib/cloudinary";
@@ -73,7 +78,9 @@ import AccountSettingsModal from "../components/AccountSettingsModal";
 import ProfileSettingsView from "../components/ProfileSettingsView";
 import RateAppModal, { shouldShowRatingPrompt, snoozeRatingPrompt } from "../components/RateAppModal";
 import WhisperCarousel from "../components/WhisperCarousel";
+import UnifiedWhisperHub from "../components/UnifiedWhisperHub";
 import { WhisperMode, WHISPER_MODES, getModeUrl, getMessageMode } from "../lib/whisperModes";
+import { getNextPromptForMode, getRandomPromptForMode, buildModeShareUrl } from "../lib/modeTemplates";
 import localforage from "localforage";
 import { 
   enablePushNotifications, 
@@ -87,6 +94,9 @@ import {
   isIOS,
   isStandalonePWA
 } from "../lib/notifications";
+import FormattedMessageText from "../components/FormattedMessageText";
+import LinkPreviewCard from "../components/LinkPreviewCard";
+import { extractUrls } from "../lib/linkPreview";
 import { usePWAInstall } from "../lib/usePWAInstall";
 import { usePWAUpdate } from "../lib/usePWAUpdate";
 
@@ -112,33 +122,22 @@ export interface Message {
 
 export type SortOption = "newest" | "oldest" | "most_rated";
 
-export const PRESET_TAGS: Record<string, { label: string; icon: string; bg: string; text: string; border: string }> = {
-  Favorites: { label: "Favorites", icon: "⭐", bg: "bg-amber-500/10 dark:bg-amber-500/20", text: "text-amber-600 dark:text-amber-400", border: "border-amber-500/30" },
-  Urgent: { label: "Urgent", icon: "🚨", bg: "bg-rose-500/10 dark:bg-rose-500/20", text: "text-rose-600 dark:text-rose-400", border: "border-rose-500/30" },
-  Personal: { label: "Personal", icon: "💜", bg: "bg-purple-500/10 dark:bg-purple-500/20", text: "text-purple-600 dark:text-purple-400", border: "border-purple-500/30" },
-  Ideas: { label: "Ideas", icon: "💡", bg: "bg-emerald-500/10 dark:bg-emerald-500/20", text: "text-emerald-600 dark:text-emerald-400", border: "border-emerald-500/30" },
-  Compliments: { label: "Compliments", icon: "✨", bg: "bg-sky-500/10 dark:bg-sky-500/20", text: "text-sky-600 dark:text-sky-400", border: "border-sky-500/30" },
-  Work: { label: "Work", icon: "💼", bg: "bg-blue-500/10 dark:bg-blue-500/20", text: "text-blue-600 dark:text-blue-400", border: "border-blue-500/30" },
-};
-
 export default function Dashboard() {
   const { user, dbUser, privateKey } = useAuthStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [decryptedCache, setDecryptedCache] = useState<Record<string, string>>({});
   const [senderReputations, setSenderReputations] = useState<Record<string, number>>({});
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<"inbox" | "settings">("inbox");
+  const [dashboardTab, setDashboardTab] = useState<"home" | "inbox">("home");
   
   // Sub-inbox view, sorting & filters
   const [inboxView, setInboxView] = useState<"active" | "archived">("active");
   const [selectedModeFilter, setSelectedModeFilter] = useState<string>("ALL"); // ALL | anonymous | confess | about | ask | opinion | crush | compliment | roast
-  const [selectedTagFilter, setSelectedTagFilter] = useState<string>("ALL"); // ALL | UNREAD | tag_name
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "UNREAD">("ALL"); // ALL | UNREAD
   const [sortBy, setSortBy] = useState<SortOption>("newest"); // newest | oldest | most_rated
   
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkTagMenuOpen, setBulkTagMenuOpen] = useState(false);
-  const [activeTagPickerMsgId, setActiveTagPickerMsgId] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState(dbUser?.displayName || "");
   const [bio, setBio] = useState(dbUser?.bio || "");
@@ -221,13 +220,13 @@ export default function Dashboard() {
   const [activeHintMsg, setActiveHintMsg] = useState<Message | null>(null);
   const [restrictSenderHints, setRestrictSenderHints] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [showQR, setShowQR] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [selectedQRMode, setSelectedQRMode] = useState<WhisperMode>(WHISPER_MODES[0]);
-  const [selectedQRUrl, setSelectedQRUrl] = useState<string>("");
   const [selectedShareMode, setSelectedShareMode] = useState<WhisperMode>(WHISPER_MODES[0]);
   const [selectedShareUrl, setSelectedShareUrl] = useState<string>("");
   const [activeFeaturedModeId, setActiveFeaturedModeId] = useState<string>("anonymous");
+  const [modeCustomPrompts, setModeCustomPrompts] = useState<Record<string, string>>({});
+  const [isEditingSharePrompt, setIsEditingSharePrompt] = useState(false);
+  const [editedSharePromptText, setEditedSharePromptText] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(dbUser?.onboardingCompleted !== true);
 
   // PWA and iOS Install state
@@ -469,7 +468,7 @@ export default function Dashboard() {
     }
   }, [user?.uid, dbUser?.notificationsEnabled]);
 
-  // Filter messages based on Active vs Archived, Mode / Version filter, and Tag filter
+  // Filter messages based on Active vs Archived, Mode / Version filter, and Status filter
   const displayedMessages = useMemo(() => {
     return messages.filter(msg => {
       // 1. Archive filter
@@ -483,12 +482,11 @@ export default function Dashboard() {
         if (msgMode.id !== selectedModeFilter) return false;
       }
 
-      // 3. Tag / Read filter
-      if (selectedTagFilter === "ALL") return true;
-      if (selectedTagFilter === "UNREAD") return !msg.read;
-      return msg.tags && msg.tags.includes(selectedTagFilter);
+      // 3. Status filter (All vs Unread)
+      if (statusFilter === "UNREAD") return !msg.read;
+      return true;
     });
-  }, [messages, inboxView, selectedModeFilter, selectedTagFilter]);
+  }, [messages, inboxView, selectedModeFilter, statusFilter]);
 
   const sortedMessages = useMemo(() => {
     const getMsgTime = (m: Message) => {
@@ -623,47 +621,6 @@ export default function Dashboard() {
     }
   };
 
-  const handleBulkToggleTag = async (tagKey: string) => {
-    if (selectedIds.size === 0 || !user) return;
-    try {
-      const batch = writeBatch(db);
-      // Determine if majority has the tag or not to add/remove uniformly
-      selectedIds.forEach(id => {
-        const msg = messages.find(m => m.id === id);
-        const existingTags = msg?.tags || [];
-        const newTags = existingTags.includes(tagKey)
-          ? existingTags.filter(t => t !== tagKey)
-          : [...existingTags, tagKey];
-        const ref = doc(db, "users", user.uid, "messages", id);
-        batch.update(ref, { tags: newTags });
-      });
-      await batch.commit();
-      setBulkTagMenuOpen(false);
-    } catch (err) {
-      console.error("Bulk tag failed", err);
-    }
-  };
-
-  // Single Message Tag Toggle
-  const handleToggleTag = async (msgId: string, tagKey: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!user) return;
-    const msg = messages.find(m => m.id === msgId);
-    const existingTags = msg?.tags || [];
-    const newTags = existingTags.includes(tagKey)
-      ? existingTags.filter(t => t !== tagKey)
-      : [...existingTags, tagKey];
-
-    try {
-      await updateDoc(doc(db, "users", user.uid, "messages", msgId), { tags: newTags });
-      if (selectedMessage && selectedMessage.id === msgId) {
-        setSelectedMessage(prev => prev ? { ...prev, tags: newTags } : null);
-      }
-    } catch (err) {
-      console.error("Toggle tag error:", err);
-    }
-  };
-
   // Single Message Archive Toggle
   const handleToggleArchive = async (msgId: string, currentArchived: boolean, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -688,9 +645,9 @@ export default function Dashboard() {
 
   const publicUrl = `${window.location.origin}/u/${dbUser.username}`;
 
-  const handleCopy = async () => {
+  const handleCopy = async (textToCopy?: string) => {
     try {
-      await navigator.clipboard.writeText(publicUrl);
+      await navigator.clipboard.writeText(textToCopy || publicUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch(e) {}
@@ -999,7 +956,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => {
-                    setActiveTab("inbox");
+                    setDashboardTab("inbox");
                     setInboxView("active");
                     const targetId = foregroundToast.messageId;
                     setForegroundToast(null);
@@ -1064,60 +1021,138 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="space-y-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
-          {/* Upgrade: Whisper Version Carousel Deck */}
-          <WhisperCarousel
+      {/* Top Segmented Navigation Tabs: Home vs Inbox */}
+      <div className="w-full flex items-center justify-center">
+        <div className="w-full grid grid-cols-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <button
+            type="button"
+            id="dashboard-tab-home-btn"
+            onClick={() => setDashboardTab("home")}
+            className={cn(
+              "relative flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer select-none",
+              dashboardTab === "home"
+                ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            )}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Home</span>
+          </button>
+
+          <button
+            type="button"
+            id="dashboard-tab-inbox-btn"
+            onClick={() => setDashboardTab("inbox")}
+            className={cn(
+              "relative flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer select-none",
+              dashboardTab === "inbox"
+                ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            )}
+          >
+            <Inbox className="w-4 h-4" />
+            <span>Inbox</span>
+            {unreadCount > 0 && (
+              <span className="px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-indigo-600 text-white shadow-xs animate-pulse">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* SECTION 1: HOME (Choose Whisper, Link Sharing, Social, Profile) */}
+      {dashboardTab === "home" && (
+        <div className="space-y-6 animate-in slide-in-from-left-2 fade-in duration-300">
+          
+          {/* Unread Whispers Quick Alert Banner */}
+          {unreadCount > 0 && (
+            <div 
+              onClick={() => {
+                setDashboardTab("inbox");
+                setStatusFilter("UNREAD");
+              }}
+              className="cursor-pointer p-4 rounded-2xl bg-gradient-to-r from-indigo-500/15 via-purple-500/15 to-indigo-500/15 border border-indigo-500/30 flex items-center justify-between gap-3 shadow-xs hover:border-indigo-500 transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-sm group-hover:scale-105 transition-transform">
+                  📬
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span>You have {unreadCount} unread whisper{unreadCount > 1 ? "s" : ""}</span>
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Tap to open your inbox and decrypt them
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-1 transition-transform">
+                <span>View</span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </div>
+          )}
+
+          {/* Unified Whisper & Quick Share Studio Hub */}
+          <UnifiedWhisperHub
             username={dbUser.username}
+            displayName={dbUser.displayName}
+            photoURL={dbUser.photoURL || avatarUrl}
+            avatarUrl={dbUser.avatarUrl || avatarUrl}
+            isLinkPaused={dbUser.isLinkPaused}
+            onOpenPauseModal={() => setShowPauseModal(true)}
             activeModeId={activeFeaturedModeId}
-            onSelectMode={(mode) => {
-              setActiveFeaturedModeId(mode.id);
+            onSelectModeId={(modeId) => {
+              setActiveFeaturedModeId(modeId);
+              setIsEditingSharePrompt(false);
             }}
-            onOpenQR={(mode, url) => {
-              setSelectedQRMode(mode);
-              setSelectedQRUrl(url);
-              setShowQR(true);
+            customPrompts={modeCustomPrompts}
+            onPromptChange={(modeId, newPrompt, newUrl) => {
+              setModeCustomPrompts(prev => ({ ...prev, [modeId]: newPrompt }));
             }}
-            onOpenShare={(mode, url) => {
+            onGenerateStoryCard={(mode, url, prompt) => {
               setSelectedShareMode(mode);
               setSelectedShareUrl(url);
               setShowShareModal(true);
             }}
           />
 
-          {/* QR Code Modal / Drawer */}
-          <AnimatePresence>
-            {showQR && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col items-center gap-4 text-center">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                    <span className="text-base">{selectedQRMode.icon}</span>
-                    <span>{selectedQRMode.name}</span>
-                  </div>
-                  <h3 className="font-bold text-lg text-slate-900 dark:text-white">Scan for {selectedQRMode.name}</h3>
-                  <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
-                    Let friends scan this QR code to open your dedicated <strong>{selectedQRMode.name}</strong> page directly.
-                  </p>
-                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
-                    <QRCodeSVG value={selectedQRUrl || getModeUrl(selectedQRMode, dbUser.username)} size={180} fgColor="#4f46e5" level="H" />
-                  </div>
-                  <div className="font-mono text-xs text-slate-500 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3.5 py-2 rounded-xl max-w-full truncate select-all">
-                    {selectedQRUrl || getModeUrl(selectedQRMode, dbUser.username)}
-                  </div>
-                  <button 
-                    onClick={() => setShowQR(false)}
-                    className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
-                  >
-                    Hide QR Code
-                  </button>
+          {/* Notifications Quick Access Card */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Bell className="w-4 h-4" />
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">Push Notifications</h4>
+                  <p className="text-xs text-slate-500">Receive alerts when new whispers arrive</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={notifPermission === "granted" ? handleDisablePush : handleEnablePush}
+                disabled={isPushToggling}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer",
+                  notifPermission === "granted"
+                    ? "bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700"
+                    : "bg-indigo-600 text-white border-transparent hover:bg-indigo-700"
+                )}
+              >
+                {isPushToggling ? "Saving..." : notifPermission === "granted" ? "Enabled" : "Enable"}
+              </button>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* SECTION 2: INBOX (Messages Only Section) */}
+      {dashboardTab === "inbox" && (
+        <div className="space-y-5 animate-in slide-in-from-right-2 fade-in duration-300">
 
           {/* Inbox View Switcher & Sorting Controls */}
           <div className="space-y-3">
@@ -1203,11 +1238,11 @@ export default function Dashboard() {
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
                   <span>Version Mode:</span>
                 </span>
-                {(selectedModeFilter !== "ALL" || selectedTagFilter !== "ALL") && (
+                {(selectedModeFilter !== "ALL" || statusFilter !== "ALL") && (
                   <button
                     onClick={() => {
                       setSelectedModeFilter("ALL");
-                      setSelectedTagFilter("ALL");
+                      setStatusFilter("ALL");
                     }}
                     className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
                   >
@@ -1256,26 +1291,26 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Tag / Category Filter Bar */}
+            {/* Status Filter Bar */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide py-1">
               <button
-                onClick={() => setSelectedTagFilter("ALL")}
+                onClick={() => setStatusFilter("ALL")}
                 className={cn(
                   "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border",
-                  selectedTagFilter === "ALL"
+                  statusFilter === "ALL"
                     ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-sm"
                     : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300"
                 )}
               >
-                All Statuses ({inboxView === "active" ? activeCount : archivedCount})
+                All ({inboxView === "active" ? activeCount : archivedCount})
               </button>
               
               {inboxView === "active" && (
                 <button
-                  onClick={() => setSelectedTagFilter(selectedTagFilter === "UNREAD" ? "ALL" : "UNREAD")}
+                  onClick={() => setStatusFilter(statusFilter === "UNREAD" ? "ALL" : "UNREAD")}
                   className={cn(
-                    "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1",
-                    selectedTagFilter === "UNREAD"
+                    "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5",
+                    statusFilter === "UNREAD"
                       ? "bg-indigo-600 text-white border-transparent shadow-sm"
                       : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-indigo-300"
                   )}
@@ -1284,33 +1319,6 @@ export default function Dashboard() {
                   Unread ({unreadCount})
                 </button>
               )}
-
-              {Object.entries(PRESET_TAGS).map(([key, tagDef]) => {
-                const countForTag = messages.filter(m => {
-                  const matchesView = inboxView === "active" ? !m.archived : Boolean(m.archived);
-                  const matchesMode = selectedModeFilter === "ALL" || getMessageMode(m).id === selectedModeFilter;
-                  return matchesView && matchesMode && m.tags && m.tags.includes(key);
-                }).length;
-
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setSelectedTagFilter(selectedTagFilter === key ? "ALL" : key)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5",
-                      selectedTagFilter === key
-                        ? `${tagDef.bg} ${tagDef.text} ${tagDef.border} ring-2 ring-indigo-500/20`
-                        : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300"
-                    )}
-                  >
-                    <span>{tagDef.icon}</span>
-                    <span>{tagDef.label}</span>
-                    {countForTag > 0 && (
-                      <span className="text-[10px] opacity-75 font-mono">({countForTag})</span>
-                    )}
-                  </button>
-                );
-              })}
             </div>
           </div>
 
@@ -1368,35 +1376,6 @@ export default function Dashboard() {
                       </button>
                     )}
 
-                    {/* Bulk Tag Popover Trigger */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setBulkTagMenuOpen(!bulkTagMenuOpen)}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors flex items-center gap-1"
-                        title="Add/Toggle Tag"
-                      >
-                        <TagIcon className="w-4 h-4 text-purple-400" />
-                      </button>
-
-                      {bulkTagMenuOpen && (
-                        <div className="absolute bottom-full right-0 mb-2 w-48 bg-slate-900 border border-slate-700 rounded-2xl p-2 shadow-2xl space-y-1 z-50">
-                          <p className="text-[11px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">
-                            Apply Tag
-                          </p>
-                          {Object.entries(PRESET_TAGS).map(([k, t]) => (
-                            <button
-                              key={k}
-                              onClick={() => handleBulkToggleTag(k)}
-                              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs text-left hover:bg-slate-800 text-slate-200 transition-colors"
-                            >
-                              <span>{t.icon}</span>
-                              <span className="font-semibold">{t.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
                     {/* Bulk Delete */}
                     <button
                       onClick={handleBulkDelete}
@@ -1440,27 +1419,26 @@ export default function Dashboard() {
                   variant={
                     inboxView === "archived"
                       ? "archived"
-                      : (selectedTagFilter !== "ALL" || selectedModeFilter !== "ALL")
+                      : (statusFilter !== "ALL" || selectedModeFilter !== "ALL")
                         ? "filter"
                         : "inbox"
                   }
-                  selectedTag={selectedTagFilter}
                   selectedMode={selectedModeFilter}
                   filterLabel={
-                    selectedModeFilter !== "ALL" && selectedTagFilter !== "ALL"
-                      ? `${WHISPER_MODES.find(m => m.id === selectedModeFilter)?.name || selectedModeFilter} + ${selectedTagFilter}`
+                    selectedModeFilter !== "ALL" && statusFilter !== "ALL"
+                      ? `${WHISPER_MODES.find(m => m.id === selectedModeFilter)?.name || selectedModeFilter} (Unread)`
                       : selectedModeFilter !== "ALL"
                         ? (WHISPER_MODES.find(m => m.id === selectedModeFilter)?.name || selectedModeFilter)
-                        : selectedTagFilter
+                        : "Unread Messages"
                   }
                   username={dbUser?.username}
                   onResetFilter={() => {
-                    setSelectedTagFilter("ALL");
+                    setStatusFilter("ALL");
                     setSelectedModeFilter("ALL");
                   }}
                   onSwitchToActive={() => {
                     setInboxView("active");
-                    setSelectedTagFilter("ALL");
+                    setStatusFilter("ALL");
                     setSelectedModeFilter("ALL");
                   }}
                 />
@@ -1469,16 +1447,7 @@ export default function Dashboard() {
               {sortedMessages.map(msg => {
                 const rep = msg.senderId && senderReputations[msg.senderId];
                 const isSelected = selectedIds.has(msg.id);
-                const msgTags = msg.tags || [];
                 const msgMode = getMessageMode(msg);
-
-                // Filter out tags that duplicate the active whisper mode badge
-                const displayTags = msgTags.filter(tagKey => {
-                  const normalizedTag = tagKey.toLowerCase().trim();
-                  const normalizedModeId = (msgMode.id || "").toLowerCase().trim();
-                  const normalizedModeName = (msgMode.name || "").toLowerCase().trim();
-                  return normalizedTag !== normalizedModeId && normalizedTag !== normalizedModeName;
-                });
 
                 // Full Unread Message Card: sleek, unique anonymous row layout matching website light/dark theme
                 if (!msg.read) {
@@ -1633,49 +1602,6 @@ export default function Dashboard() {
                           </button>
                         )}
 
-                        {/* Tag Menu Button on card */}
-                        <div className="relative">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveTagPickerMsgId(activeTagPickerMsgId === msg.id ? null : msg.id);
-                            }}
-                            className="text-slate-400 hover:text-purple-500 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                            title="Manage Tags"
-                          >
-                            <TagIcon className="w-4 h-4" />
-                          </button>
-
-                          {activeTagPickerMsgId === msg.id && (
-                            <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-1.5 shadow-xl space-y-1 z-30">
-                              <p className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">
-                                Assign Tag
-                              </p>
-                              {Object.entries(PRESET_TAGS).map(([k, t]) => {
-                                const hasTag = msgTags.includes(k);
-                                return (
-                                  <button
-                                    key={k}
-                                    onClick={(e) => handleToggleTag(msg.id, k, e)}
-                                    className={cn(
-                                      "w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs text-left transition-colors",
-                                      hasTag 
-                                        ? "bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 font-bold" 
-                                        : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
-                                    )}
-                                  >
-                                    <span className="flex items-center gap-1.5">
-                                      <span>{t.icon}</span>
-                                      <span>{t.label}</span>
-                                    </span>
-                                    {hasTag && <CheckCheck className="w-3.5 h-3.5 text-indigo-500" />}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-
                         {/* Archive / Unarchive Button */}
                         <button
                           onClick={(e) => handleToggleArchive(msg.id, Boolean(msg.archived), e)}
@@ -1707,7 +1633,7 @@ export default function Dashboard() {
                     </div>
                     
                     {/* Message Body Content */}
-                    <div className={cn("text-base sm:text-lg font-medium break-words line-clamp-2 font-sans mb-3 flex-1")}>
+                    <div className="text-base sm:text-lg font-medium break-words font-sans mb-3 flex-1">
                       {(() => {
                         const isLocked = msg.unlocksAt && (msg.unlocksAt.seconds * 1000 > Date.now());
                         if (isLocked) {
@@ -1726,39 +1652,30 @@ export default function Dashboard() {
 
                         const decrypted = decryptedCache[msg.id] || "";
                         const flattenedText = decrypted.replace(/[\r\n]+/g, " ").trim();
-                        return <>{msg.mood && <span className="mr-2 text-xl">{msg.mood}</span>}{flattenedText}</>;
+                        const urls = extractUrls(decrypted);
+
+                        return (
+                          <div className="space-y-2">
+                            <p className="line-clamp-2">
+                              {msg.mood && <span className="mr-2 text-xl">{msg.mood}</span>}
+                              {flattenedText}
+                            </p>
+                            {urls.length > 0 && (
+                              <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                                <LinkPreviewCard url={urls[0]} variant="compact" />
+                              </div>
+                            )}
+                          </div>
+                        );
                       })()}
                     </div>
-
-                    {/* Applied Tags List */}
-                    {displayTags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-2">
-                        {displayTags.map(tagKey => {
-                          const tagDef = PRESET_TAGS[tagKey] || { label: tagKey, icon: "🏷️", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-600 dark:text-slate-300", border: "border-slate-200" };
-                          return (
-                            <span
-                              key={tagKey}
-                              className={cn(
-                                "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border",
-                                tagDef.bg,
-                                tagDef.text,
-                                tagDef.border
-                              )}
-                            >
-                              <span>{tagDef.icon}</span>
-                              <span>{tagDef.label}</span>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
-                    
                   </motion.div>
                 );
               })}
             </AnimatePresence>
           </div>
         </div>
+      )}
       
       {/* Immersive Full Screen Message View Display (Cinematic Atmospheric Theme) */}
       <AnimatePresence>
@@ -1835,17 +1752,16 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Mood Emoji if present */}
-                  {selectedMessage.mood && (
-                    <div className="text-3xl sm:text-4xl mb-3">
-                      {selectedMessage.mood}
-                    </div>
-                  )}
-
-                  {/* Full Decrypted Message Text */}
-                  <p className="text-xl sm:text-3xl font-extrabold tracking-tight text-white leading-relaxed break-words whitespace-pre-wrap max-w-xl my-4 text-center drop-shadow-sm">
-                    {decryptedText}
-                  </p>
+                  {/* Full Decrypted Message Text & Link Previews */}
+                  <div className="w-full max-w-xl my-4">
+                    <FormattedMessageText
+                      text={decryptedText}
+                      mood={selectedMessage.mood}
+                      variant="cinematic"
+                      textClassName="text-xl sm:text-3xl font-extrabold tracking-tight text-white leading-relaxed break-words whitespace-pre-wrap text-center drop-shadow-sm"
+                      previewClassName="mt-6 max-w-lg mx-auto"
+                    />
+                  </div>
 
                   {/* Card Security Footer */}
                   <div className="mt-6 pt-4 w-full border-t border-white/10 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-mono tracking-wider uppercase">
@@ -1853,36 +1769,6 @@ export default function Dashboard() {
                     <span>End-to-end encrypted anonymous message</span>
                   </div>
 
-                </div>
-
-                {/* Categorize & Tags Bar */}
-                <div className="mt-5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Tags
-                    </label>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                    {Object.entries(PRESET_TAGS).map(([k, t]) => {
-                      const hasTag = (selectedMessage.tags || []).includes(k);
-                      return (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={(e) => handleToggleTag(selectedMessage.id, k, e)}
-                          className={cn(
-                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border flex items-center gap-1.5 shadow-xs",
-                            hasTag
-                              ? `${t.bg} ${t.text} ${t.border} ring-2 ring-white/30 scale-105`
-                              : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/15 hover:text-white"
-                          )}
-                        >
-                          <span>{t.icon}</span>
-                          <span>{t.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
                 </div>
               </div>
 
@@ -2078,8 +1964,12 @@ export default function Dashboard() {
         publicUrl={selectedShareUrl || publicUrl}
         mode={selectedShareMode}
         modeTitle={selectedShareMode?.name}
-        modePrompt={selectedShareMode?.prompt}
+        modePrompt={modeCustomPrompts[selectedShareMode?.id] || selectedShareMode?.prompt}
         modeIcon={selectedShareMode?.icon}
+        onPromptChange={(modeId, newPrompt, newUrl) => {
+          setModeCustomPrompts(prev => ({ ...prev, [modeId]: newPrompt }));
+          setSelectedShareUrl(newUrl);
+        }}
       />
 
       {/* iOS PWA Installation & Push Notification Modal */}

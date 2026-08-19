@@ -3,6 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import webpush from "web-push";
+import { scrapeLinkMetadata } from "./src/lib/serverLinkScraper";
 
 dotenv.config();
 
@@ -31,6 +32,25 @@ async function startServer() {
   // Expose Public VAPID Key for client subscription
   app.get("/api/vapid-public-key", (req, res) => {
     res.json({ publicKey: VAPID_PUBLIC_KEY });
+  });
+
+  // Link preview metadata scraper endpoint
+  app.all(["/api/link-preview", "/api/link-preview/"], async (req, res) => {
+    try {
+      const url = (req.query.url as string) || (req.body && req.body.url);
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ error: "Missing or invalid url parameter" });
+      }
+
+      const metadata = await scrapeLinkMetadata(url);
+      return res.json(metadata);
+    } catch (err: any) {
+      console.warn("[LinkPreview API Error]:", err.message || err);
+      return res.status(500).json({ 
+        error: err.message || "Failed to scrape link metadata",
+        fallback: true 
+      });
+    }
   });
 
   // Real Web Push & FCM dispatch endpoint

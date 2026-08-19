@@ -1,6 +1,77 @@
 import { WhisperMode, getMessageMode } from "./whisperModes";
+import { getAssetUrl } from "./assets";
+import { WHISPER_LOGO_DATA_URL } from "./logoBase64";
 
 export type ProfileCardTheme = "obsidian" | "neon" | "velvet" | "sunset" | "cyberpunk";
+
+async function loadLogoImage(): Promise<HTMLImageElement | null> {
+  try {
+    return await new Promise<HTMLImageElement | null>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => {
+        // Fallback to local url if data URI fails for any reason
+        const fallbackImg = new Image();
+        fallbackImg.onload = () => resolve(fallbackImg);
+        fallbackImg.onerror = () => resolve(null);
+        fallbackImg.src = getAssetUrl("android-chrome-192x192.png");
+      };
+      img.src = WHISPER_LOGO_DATA_URL;
+    });
+  } catch {
+    return null;
+  }
+}
+
+function drawWhisperLogoMark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, logoImg?: HTMLImageElement | null) {
+  ctx.save();
+  const radius = size * 0.26;
+  
+  if (logoImg && (logoImg.complete || logoImg.naturalWidth > 0)) {
+    // Draw rounded clipped authentic logo image with outer glow/border
+    drawRoundedRect(ctx, x, y, size, size, radius);
+    ctx.clip();
+    ctx.drawImage(logoImg, x, y, size, size);
+  } else {
+    // Elegant fallback gradient app icon
+    const iconGrad = ctx.createLinearGradient(x, y, x + size, y + size);
+    iconGrad.addColorStop(0, "#6366f1");
+    iconGrad.addColorStop(0.5, "#8b5cf6");
+    iconGrad.addColorStop(1, "#d946ef");
+    ctx.fillStyle = iconGrad;
+    drawRoundedRect(ctx, x, y, size, size, radius);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+    ctx.lineWidth = 1.5;
+    drawRoundedRect(ctx, x, y, size, size, radius);
+    ctx.stroke();
+
+    // White stylized speech bubble / whisper emblem
+    ctx.fillStyle = "#ffffff";
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const r = size * 0.24;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy - 2, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.6, cy + r * 0.5);
+    ctx.lineTo(cx - r * 1.15, cy + r * 1.15);
+    ctx.lineTo(cx, cy + r * 0.65);
+    ctx.closePath();
+    ctx.fill();
+
+    // Center lock eye
+    ctx.fillStyle = "#6366f1";
+    ctx.beginPath();
+    ctx.arc(cx, cy - 2, r * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
 
 export interface ProfileShareCardOptions {
   username: string;
@@ -101,6 +172,7 @@ export async function generateProfileShareCard(options: ProfileShareCardOptions)
   };
 
   const palette = themeConfigs[theme] || themeConfigs.obsidian;
+  const logoImg = await loadLogoImage();
 
   // 1. Draw Canvas Background (1080x1080)
   const bgGrad = ctx.createLinearGradient(0, 0, 1080, 1080);
@@ -167,27 +239,33 @@ export async function generateProfileShareCard(options: ProfileShareCardOptions)
   ctx.stroke();
   ctx.restore();
 
-  // 4. Top Brand Header ("🌚 WHISPER")
-  const brandPillW = 220;
-  const brandPillH = 56;
+  // 4. Top Brand Header with Authentic Logo
+  const brandPillW = 240;
+  const brandPillH = 58;
   const brandPillX = (1080 - brandPillW) / 2;
   const brandPillY = cardY + 60;
 
   ctx.save();
-  ctx.fillStyle = "rgba(255, 255, 255, 0.07)";
-  drawRoundedRect(ctx, brandPillX, brandPillY, brandPillW, brandPillH, 28);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+  drawRoundedRect(ctx, brandPillX, brandPillY, brandPillW, brandPillH, 29);
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
   ctx.lineWidth = 1.2;
-  drawRoundedRect(ctx, brandPillX, brandPillY, brandPillW, brandPillH, 28);
+  drawRoundedRect(ctx, brandPillX, brandPillY, brandPillW, brandPillH, 29);
   ctx.stroke();
+
+  // Draw Logo mark
+  const topLogoSize = 32;
+  const topLogoX = brandPillX + 18;
+  const topLogoY = brandPillY + (brandPillH - topLogoSize) / 2;
+  drawWhisperLogoMark(ctx, topLogoX, topLogoY, topLogoSize, logoImg);
 
   ctx.fillStyle = "#ffffff";
   ctx.font = `800 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-  ctx.textAlign = "center";
+  ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText("🌚 WHISPER", brandPillX + brandPillW / 2, brandPillY + brandPillH / 2);
+  ctx.fillText("WHISPER", topLogoX + topLogoSize + 12, brandPillY + brandPillH / 2);
   ctx.restore();
 
   // 5. Center Prompt Message Box (Hero Element)
@@ -360,6 +438,7 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
     : getMessageMode(typeof rawMode === "string" ? { mode: rawMode } : null);
 
   const activeTheme = theme || activeMode.themeStyle || "obsidian";
+  const logoImg = await loadLogoImage();
 
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
@@ -480,15 +559,15 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
     lines.push(...wrapped);
   });
 
-  const headerH = 140;
+  const headerH = 120;
   const emojiH = emojiStr ? 90 : 0;
   const textBlockH = Math.max(lines.length * lineHeight, 140);
-  const footerH = 100;
-  const bodyPaddingY = 70;
+  const footerH = 90;
+  const bodyPaddingY = 60;
 
   const totalCardH = Math.min(
     1300,
-    Math.max(headerH + emojiH + textBlockH + footerH + bodyPaddingY * 2, 600)
+    Math.max(headerH + emojiH + textBlockH + footerH + bodyPaddingY * 2, 580)
   );
 
   const cardY = Math.max(260, (1700 - totalCardH) / 2 - 30);
@@ -531,54 +610,40 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
   ctx.stroke();
   ctx.restore();
 
-  // 6. Header Section: Glowing Badge
+  // 6. Header Section: Clean Floating Badge (No line behind)
   const badgeLabel = `${activeMode.icon} ${activeMode.badge.toUpperCase()} • 100% ANONYMOUS`;
-  const badgeW = Math.min(620, Math.max(480, badgeLabel.length * 15));
-  const badgeH = 68;
+  const badgeW = Math.min(620, Math.max(460, badgeLabel.length * 14.5));
+  const badgeH = 64;
   const badgeX = 540 - badgeW / 2;
-  const badgeY = cardY + 42;
+  const badgeY = cardY + 44;
 
   ctx.save();
   // Badge pill background
   const badgeBg = ctx.createLinearGradient(badgeX, badgeY, badgeX + badgeW, badgeY);
-  badgeBg.addColorStop(0, "rgba(255, 255, 255, 0.08)");
-  badgeBg.addColorStop(1, "rgba(255, 255, 255, 0.04)");
+  badgeBg.addColorStop(0, "rgba(255, 255, 255, 0.09)");
+  badgeBg.addColorStop(1, "rgba(255, 255, 255, 0.05)");
   ctx.fillStyle = badgeBg;
-  drawRoundedRect(ctx, badgeX, badgeY, badgeW, badgeH, 34);
+  drawRoundedRect(ctx, badgeX, badgeY, badgeW, badgeH, 32);
   ctx.fill();
 
   // Badge border
   ctx.strokeStyle = glowTheme.badgeBorder;
   ctx.lineWidth = 1.5;
-  drawRoundedRect(ctx, badgeX, badgeY, badgeW, badgeH, 34);
+  drawRoundedRect(ctx, badgeX, badgeY, badgeW, badgeH, 32);
   ctx.stroke();
 
   // Badge Text
   ctx.fillStyle = "#ffffff";
-  ctx.font = `800 23px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  ctx.font = `800 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.shadowColor = glowTheme.badgeGlow;
-  ctx.shadowBlur = 12;
+  ctx.shadowBlur = 10;
   ctx.fillText(badgeLabel, 540, badgeY + badgeH / 2);
   ctx.restore();
 
-  // Decorative sleek line under header
-  ctx.save();
-  const divGrad = ctx.createLinearGradient(cardX + 80, 0, cardX + cardW - 80, 0);
-  divGrad.addColorStop(0, "rgba(255, 255, 255, 0)");
-  divGrad.addColorStop(0.5, glowTheme.strokeColors[0] + "66");
-  divGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
-  ctx.strokeStyle = divGrad;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(cardX + 80, cardY + headerH);
-  ctx.lineTo(cardX + cardW - 80, cardY + headerH);
-  ctx.stroke();
-  ctx.restore();
-
   // 7. Render Reaction / Mood (if available)
-  let contentStartY = cardY + headerH + 30;
+  let contentStartY = badgeY + badgeH + 36;
   if (emojiStr) {
     ctx.save();
     ctx.font = "64px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
@@ -586,7 +651,7 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
     ctx.textBaseline = "middle";
     ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
     ctx.shadowBlur = 10;
-    ctx.fillText(emojiStr, 540, contentStartY + 35);
+    ctx.fillText(emojiStr, 540, contentStartY + 30);
     ctx.restore();
     contentStartY += emojiH;
   }
@@ -609,40 +674,68 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
   });
   ctx.restore();
 
-  // 9. Card Footer Bar (Cyber Security Seal)
-  const sealY = cardY + totalCardH - 52;
+  // 9. Card Footer Bar (Modern Clean End-to-End Indicator without slashes)
+  const sealY = cardY + totalCardH - 48;
+  const sealText = `End-to-End Encrypted • Anonymous ${activeMode.name}`;
   ctx.save();
-  ctx.fillStyle = "rgba(148, 163, 184, 0.7)";
-  ctx.font = `600 20px -apple-system, BlinkMacSystemFont, "SF Mono", Menlo, Consolas, monospace`;
-  ctx.textAlign = "center";
+  ctx.font = `600 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  const sealMetrics = ctx.measureText(sealText);
+  const dotRadius = 4.5;
+  const dotSpacing = 12;
+  const totalSealW = dotRadius * 2 + dotSpacing + sealMetrics.width;
+  const sealStartX = 540 - totalSealW / 2;
+
+  // Glowing emerald status dot
+  ctx.fillStyle = "#10b981";
+  ctx.shadowColor = "rgba(16, 185, 129, 0.8)";
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.arc(sealStartX + dotRadius, sealY, dotRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Security text
+  ctx.fillStyle = "rgba(203, 213, 225, 0.85)";
+  ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
+  ctx.shadowBlur = 4;
+  ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText(`/// END-TO-END ENCRYPTED ${activeMode.tagLabel.toUpperCase()} ///`, 540, sealY);
+  ctx.fillText(sealText, sealStartX + dotRadius * 2 + dotSpacing, sealY);
   ctx.restore();
 
-  // 10. Bottom Story Canvas Branding (Unique Whisper Neon Emblem)
-  const brandY = 1720;
+  // 10. Bottom Story Canvas Branding (Authentic Whisper Logo & Wordmark)
+  const brandCenterY = 1730;
+  const logoSize = 46;
+  const brandWordmark = "WHISPER";
 
-  // Moon & Title
   ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  ctx.font = `900 40px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  const wordmarkMetrics = ctx.measureText(brandWordmark);
+  const totalBrandW = logoSize + 16 + wordmarkMetrics.width;
+  const brandStartX = 540 - totalBrandW / 2;
+  const logoY = brandCenterY - logoSize / 2 - 14;
 
-  // Glowing brand logo
-  ctx.font = `900 44px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-  const logoGrad = ctx.createLinearGradient(380, brandY, 700, brandY);
+  // 1. Draw Authentic Logo Mark
+  drawWhisperLogoMark(ctx, brandStartX, logoY, logoSize, logoImg);
+
+  // 2. Draw Wordmark Text
+  const logoGrad = ctx.createLinearGradient(brandStartX + logoSize + 16, 0, brandStartX + totalBrandW, 0);
   logoGrad.addColorStop(0, "#ffffff");
   logoGrad.addColorStop(0.6, "#e0e7ff");
-  logoGrad.addColorStop(1, "#c084fc");
+  logoGrad.addColorStop(1, glowTheme.strokeColors[0] || "#c084fc");
   ctx.fillStyle = logoGrad;
-  ctx.shadowColor = "rgba(168, 85, 247, 0.6)";
-  ctx.shadowBlur = 20;
-  ctx.fillText("🌚 WHISPER", 540, brandY);
+  ctx.shadowColor = glowTheme.badgeGlow;
+  ctx.shadowBlur = 18;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(brandWordmark, brandStartX + logoSize + 16, logoY + logoSize / 2);
 
-  // Subtitle
-  ctx.font = `600 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-  ctx.fillStyle = "rgba(203, 213, 225, 0.7)";
-  ctx.shadowBlur = 8;
-  ctx.fillText("anonymous & encrypted messaging", 540, brandY + 46);
+  // 3. Draw Subtitle
+  ctx.font = `600 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  ctx.fillStyle = "rgba(203, 213, 225, 0.75)";
+  ctx.textAlign = "center";
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.fillText("anonymous & encrypted messaging", 540, logoY + logoSize + 26);
   ctx.restore();
 
   return new Promise((resolve, reject) => {

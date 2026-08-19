@@ -12,6 +12,8 @@ import LoadingScreen from "../components/LoadingScreen";
 import UserAvatar from "../components/UserAvatar";
 import { getModeByPathPrefix } from "../lib/whisperModes";
 import { cn } from "../lib/utils";
+import LinkPreviewCard from "../components/LinkPreviewCard";
+import { extractUrls } from "../lib/linkPreview";
 
 export default function PublicProfile() {
   const { username } = useParams<{ username: string }>();
@@ -20,6 +22,11 @@ export default function PublicProfile() {
   // Extract path prefix (e.g. "confess", "about", "ask", "opinion", "crush", "compliment", "roast", "u")
   const pathPrefix = location.pathname.split("/")[1] || "u";
   const currentMode = getModeByPathPrefix(pathPrefix);
+
+  // Extract optional custom prompt from query string
+  const searchParams = new URLSearchParams(location.search);
+  const customPromptParam = searchParams.get("p") || searchParams.get("prompt");
+  const activePromptText = customPromptParam?.trim() || currentMode.prompt;
 
   const [profile, setProfile] = useState<any>(null);
   const [status, setStatus] = useState<"loading" | "found" | "not_found">("loading");
@@ -243,10 +250,10 @@ export default function PublicProfile() {
               )}
 
               {/* Mode specific prompt box */}
-              <div className="mt-4 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-center w-full max-w-sm">
-                <p className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center justify-center gap-1.5">
+              <div className="mt-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-center w-full max-w-sm shadow-2xs">
+                <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-center gap-1.5 leading-snug">
                   <span>{currentMode.icon}</span>
-                  <span>{currentMode.prompt}</span>
+                  <span>{activePromptText}</span>
                 </p>
               </div>
             </div>
@@ -304,6 +311,20 @@ export default function PublicProfile() {
                   {message.length}/500
                 </div>
               </div>
+
+              {/* Automatic Link Preview for Typed URLs */}
+              {(() => {
+                const detectedUrls = extractUrls(message);
+                if (detectedUrls.length === 0) return null;
+                return (
+                  <div className="space-y-1.5 pt-0.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
+                      <span>Link Attachment Preview</span>
+                    </div>
+                    <LinkPreviewCard url={detectedUrls[0]} variant="default" />
+                  </div>
+                );
+              })()}
 
               {/* Mood Selector */}
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide pt-1">

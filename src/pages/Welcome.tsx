@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuthStore } from "../lib/store";
 import { ArrowRight, Shield, MessageSquare, Lock, Sparkles, UserPlus, Zap } from "lucide-react";
+import { getAssetUrl } from "../lib/assets";
 
 type WelcomeStep = "intro" | "step1" | "step2" | "step3";
 
@@ -75,10 +76,15 @@ export default function Welcome() {
             <FloatingBubble delay={2} duration={9} yOffset={50} xOffset={-30} icon={Lock} colorClass="bg-white/40 dark:bg-slate-800/40 border-white/20 dark:border-slate-700/30 text-emerald-500 top-20 -right-12" />
             <FloatingBubble delay={4} duration={7} yOffset={-40} xOffset={-20} icon={Zap} colorClass="bg-white/40 dark:bg-slate-800/40 border-white/20 dark:border-slate-700/30 text-amber-500 -bottom-20 left-4" />
 
-            <div className="w-28 h-28 mb-10 relative">
+            <div className="w-28 h-28 mb-8 relative flex items-center justify-center">
               <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500 to-purple-500 blur-2xl rounded-full opacity-40 animate-pulse"></div>
-              <div className="relative w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[2.5rem] shadow-2xl shadow-indigo-500/30 flex items-center justify-center rotate-3 transform hover:rotate-6 transition-transform border border-white/10 backdrop-blur-sm">
-                <Sparkles className="w-12 h-12 text-white" />
+              <div className="relative w-full h-full bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl shadow-indigo-500/20 flex items-center justify-center border-2 border-indigo-100 dark:border-slate-800 p-3 ring-4 ring-indigo-500/10">
+                <img
+                  src={getAssetUrl("android-chrome-192x192.png")}
+                  alt="Whisper Logo"
+                  className="w-20 h-20 object-contain rounded-2xl"
+                  referrerPolicy="no-referrer"
+                />
               </div>
             </div>
 

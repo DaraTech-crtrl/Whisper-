@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Share2, Download, Copy, CheckCircle2, X, Sparkles } from "lucide-react";
+import { 
+  Share2, 
+  Download, 
+  Copy, 
+  CheckCircle2, 
+  X, 
+  Sparkles, 
+  Shuffle, 
+  Pencil, 
+  Check, 
+  RotateCcw 
+} from "lucide-react";
 import { generateProfileShareCard, ProfileCardTheme } from "../lib/canvasImage";
-import { WhisperMode } from "../lib/whisperModes";
+import { WhisperMode, getModeUrl } from "../lib/whisperModes";
+import { getRandomPromptForMode, getNextPromptForMode, buildModeShareUrl } from "../lib/modeTemplates";
 
 interface ShareCardModalProps {
   isOpen: boolean;
@@ -16,6 +28,7 @@ interface ShareCardModalProps {
   modePrompt?: string;
   modeIcon?: string;
   mode?: WhisperMode;
+  onPromptChange?: (modeId: string, newPrompt: string, newUrl: string) => void;
 }
 
 const THEME_OPTIONS: { id: ProfileCardTheme; name: string; bg: string; border: string; text: string }[] = [
@@ -37,21 +50,44 @@ export default function ShareCardModal({
   modeTitle,
   modePrompt,
   modeIcon,
-  mode
+  mode,
+  onPromptChange
 }: ShareCardModalProps) {
   // Automatically detect the mode's headline and details
   const activeModeTitle = modeTitle || mode?.name || "Anonymous Whisper";
   const activeModeIcon = modeIcon || mode?.icon || "🤫";
-  
-  const cardHeadline = React.useMemo(() => {
-    if (modePrompt) {
-      return `${modePrompt} ${activeModeIcon}`.trim();
+  const modeId = mode?.id || "anonymous";
+
+  const [currentPrompt, setCurrentPrompt] = useState<string>(
+    modePrompt || mode?.prompt || "send me anonymous messages!"
+  );
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [editedPromptText, setEditedPromptText] = useState(currentPrompt);
+
+  // Sync state when props change
+  useEffect(() => {
+    if (isOpen) {
+      const initialPrompt = modePrompt || mode?.prompt || "send me anonymous messages!";
+      setCurrentPrompt(initialPrompt);
+      setEditedPromptText(initialPrompt);
+      setIsEditingPrompt(false);
     }
-    if (mode?.prompt) {
-      return `${mode.prompt} ${mode.icon}`.trim();
+  }, [isOpen, modePrompt, mode]);
+
+  // Compute active public URL with custom prompt if set
+  const activeShareUrl = React.useMemo(() => {
+    if (mode) {
+      return buildModeShareUrl(mode, username, currentPrompt);
+    }
+    return publicUrl;
+  }, [mode, username, currentPrompt, publicUrl]);
+
+  const cardHeadline = React.useMemo(() => {
+    if (currentPrompt.trim()) {
+      return `${currentPrompt.trim()} ${activeModeIcon}`.trim();
     }
     return `send me anonymous messages! ${activeModeIcon}`;
-  }, [modePrompt, mode, activeModeIcon]);
+  }, [currentPrompt, activeModeIcon]);
 
   const [selectedTheme, setSelectedTheme] = useState<ProfileCardTheme>("obsidian");
   const [renderedCard, setRenderedCard] = useState<{ dataUrl: string; blob: Blob } | null>(null);
@@ -79,7 +115,7 @@ export default function ShareCardModal({
           displayName,
           photoURL,
           avatarUrl,
-          publicUrl,
+          publicUrl: activeShareUrl,
           theme: selectedTheme,
           headline: cardHeadline
         });
@@ -100,11 +136,56 @@ export default function ShareCardModal({
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [isOpen, username, displayName, photoURL, avatarUrl, publicUrl, selectedTheme, cardHeadline]);
+  }, [isOpen, username, displayName, photoURL, avatarUrl, activeShareUrl, selectedTheme, cardHeadline]);
+
+  // Shuffle prompt handler (picks from the 30 pre-built templates)
+  const handleShufflePrompt = () => {
+    const nextPrompt = getNextPromptForMode(modeId, currentPrompt);
+    setCurrentPrompt(nextPrompt);
+    setEditedPromptText(nextPrompt);
+    setIsEditingPrompt(false);
+    showToast("Prompt shuffled! 🎲");
+    
+    if (mode && onPromptChange) {
+      const newUrl = buildModeShareUrl(mode, username, nextPrompt);
+      onPromptChange(mode.id, nextPrompt, newUrl);
+    }
+  };
+
+  // Save edited prompt handler
+  const handleSaveEditedPrompt = () => {
+    const trimmed = editedPromptText.trim();
+    if (!trimmed) {
+      showToast("Prompt cannot be empty");
+      return;
+    }
+    setCurrentPrompt(trimmed);
+    setIsEditingPrompt(false);
+    showToast("Prompt updated!");
+
+    if (mode && onPromptChange) {
+      const newUrl = buildModeShareUrl(mode, username, trimmed);
+      onPromptChange(mode.id, trimmed, newUrl);
+    }
+  };
+
+  // Reset prompt to default handler
+  const handleResetPrompt = () => {
+    const defaultPrompt = mode?.prompt || "send me anonymous messages!";
+    setCurrentPrompt(defaultPrompt);
+    setEditedPromptText(defaultPrompt);
+    setIsEditingPrompt(false);
+    showToast("Reset to default prompt");
+
+    if (mode && onPromptChange) {
+      const newUrl = buildModeShareUrl(mode, username, defaultPrompt);
+      onPromptChange(mode.id, defaultPrompt, newUrl);
+    }
+  };
 
   const handleCopyLink = async () => {
     try {
-      await navigator.clipboard.writeText(publicUrl);
+      await navigator.clipboard.writeText(activeShareUrl);
       setCopied(true);
       showToast("Link copied to clipboard!");
       setTimeout(() => setCopied(false), 2000);
@@ -140,14 +221,14 @@ export default function ShareCardModal({
           files: [file],
           title: cardHeadline,
           text: cardHeadline,
-          url: publicUrl
+          url: activeShareUrl
         });
         showToast("Shared card successfully!");
       } else if (navigator.share) {
         await navigator.share({
           title: cardHeadline,
           text: cardHeadline,
-          url: publicUrl
+          url: activeShareUrl
         });
       } else {
         handleDownload();
@@ -206,8 +287,92 @@ export default function ShareCardModal({
             </div>
           )}
 
+          {/* Prompt Controls: Edit & Random Shuffle */}
+          <div className="pt-2.5 pb-1 shrink-0">
+            <div className="bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                  <span>Card Prompt</span>
+                </span>
+
+                {/* Edit & Random Change Action Icons (Only Icons) */}
+                <div className="flex items-center gap-1.5">
+                  {/* Shuffle / Random Prompt (Only Icon) */}
+                  <button
+                    type="button"
+                    onClick={handleShufflePrompt}
+                    title="Random change prompt (30 templates)"
+                    aria-label="Random change prompt"
+                    className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-2xs"
+                  >
+                    <Shuffle className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Edit Custom Prompt (Only Icon) */}
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingPrompt(!isEditingPrompt)}
+                    title={isEditingPrompt ? "Cancel editing" : "Edit custom prompt"}
+                    aria-label={isEditingPrompt ? "Cancel editing" : "Edit custom prompt"}
+                    className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-2xs ${
+                      isEditingPrompt
+                        ? "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white border-slate-300 dark:border-slate-600"
+                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Reset to Default (Only Icon) */}
+                  {currentPrompt !== mode?.prompt && (
+                    <button
+                      type="button"
+                      onClick={handleResetPrompt}
+                      title="Reset to default prompt"
+                      aria-label="Reset to default prompt"
+                      className="w-7 h-7 rounded-lg border border-slate-200/80 dark:border-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-2xs"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Inline Editor or Display Text */}
+              {isEditingPrompt ? (
+                <div className="flex items-center gap-1.5 pt-1">
+                  <input
+                    type="text"
+                    value={editedPromptText}
+                    onChange={(e) => setEditedPromptText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveEditedPrompt();
+                      if (e.key === "Escape") setIsEditingPrompt(false);
+                    }}
+                    placeholder="Type your custom question or prompt..."
+                    maxLength={100}
+                    className="flex-1 bg-white dark:bg-slate-900 border border-indigo-400 dark:border-indigo-600 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveEditedPrompt}
+                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 shadow-xs cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Apply</span>
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-snug line-clamp-2">
+                  "{currentPrompt}"
+                </p>
+              )}
+            </div>
+          </div>
+
           {/* Theme / Style Selector Pills */}
-          <div className="py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
+          <div className="py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
             <span className="text-xs font-bold text-slate-400 mr-1 shrink-0 flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-indigo-400" />
               Theme:
@@ -228,8 +393,8 @@ export default function ShareCardModal({
             ))}
           </div>
 
-          {/* Single Dedicated Share Card Image Preview */}
-          <div className="relative w-full aspect-square bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex items-center justify-center p-2 my-1 shrink-0 max-h-[320px]">
+          {/* Dedicated Share Card Image Preview */}
+          <div className="relative w-full aspect-square bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex items-center justify-center p-2 my-1 shrink-0 max-h-[300px]">
             {renderedCard ? (
               <img
                 src={renderedCard.dataUrl}
@@ -242,13 +407,6 @@ export default function ShareCardModal({
                 <span className="text-xs font-semibold">Generating your {activeModeTitle} card...</span>
               </div>
             )}
-          </div>
-
-          {/* Card Prompt Text info */}
-          <div className="py-1 px-1 flex items-center justify-center gap-1 text-center shrink-0">
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate max-w-[320px]">
-              Prompt: <span className="text-slate-800 dark:text-slate-200 font-bold">"{cardHeadline}"</span>
-            </span>
           </div>
 
           {/* Action Buttons */}
@@ -292,3 +450,4 @@ export default function ShareCardModal({
     </AnimatePresence>
   );
 }
+

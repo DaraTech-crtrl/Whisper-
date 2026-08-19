@@ -20,50 +20,25 @@ async function loadLogoImage(): Promise<HTMLImageElement | null> {
 
 function drawWhisperLogoMark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, logoImg?: HTMLImageElement | null) {
   ctx.save();
-  const radius = size * 0.26;
+  const radius = size * 0.28;
   
+  // Clean white rounded container matching app structure
+  ctx.fillStyle = "#ffffff";
+  drawRoundedRect(ctx, x, y, size, size, radius);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+  ctx.lineWidth = 1;
+  drawRoundedRect(ctx, x, y, size, size, radius);
+  ctx.stroke();
+
   if (logoImg && (logoImg.complete || logoImg.naturalWidth > 0)) {
-    // Draw rounded clipped authentic logo image with outer glow/border
-    drawRoundedRect(ctx, x, y, size, size, radius);
+    const pad = size * 0.08;
+    ctx.save();
+    drawRoundedRect(ctx, x + pad, y + pad, size - pad * 2, size - pad * 2, radius * 0.8);
     ctx.clip();
-    ctx.drawImage(logoImg, x, y, size, size);
-  } else {
-    // Elegant fallback gradient app icon
-    const iconGrad = ctx.createLinearGradient(x, y, x + size, y + size);
-    iconGrad.addColorStop(0, "#6366f1");
-    iconGrad.addColorStop(0.5, "#8b5cf6");
-    iconGrad.addColorStop(1, "#d946ef");
-    ctx.fillStyle = iconGrad;
-    drawRoundedRect(ctx, x, y, size, size, radius);
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-    ctx.lineWidth = 1.5;
-    drawRoundedRect(ctx, x, y, size, size, radius);
-    ctx.stroke();
-
-    // White stylized speech bubble / whisper emblem
-    ctx.fillStyle = "#ffffff";
-    const cx = x + size / 2;
-    const cy = y + size / 2;
-    const r = size * 0.24;
-
-    ctx.beginPath();
-    ctx.arc(cx, cy - 2, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(cx - r * 0.6, cy + r * 0.5);
-    ctx.lineTo(cx - r * 1.15, cy + r * 1.15);
-    ctx.lineTo(cx, cy + r * 0.65);
-    ctx.closePath();
-    ctx.fill();
-
-    // Center lock eye
-    ctx.fillStyle = "#6366f1";
-    ctx.beginPath();
-    ctx.arc(cx, cy - 2, r * 0.38, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.drawImage(logoImg, x + pad, y + pad, size - pad * 2, size - pad * 2);
+    ctx.restore();
   }
   ctx.restore();
 }
@@ -234,33 +209,28 @@ export async function generateProfileShareCard(options: ProfileShareCardOptions)
   ctx.stroke();
   ctx.restore();
 
-  // 4. Top Brand Header with Authentic Logo
-  const brandPillW = 240;
-  const brandPillH = 58;
+  // 4. Top Brand Header (Sleek Minimalist Pill)
+  const brandPillW = 200;
+  const brandPillH = 50;
   const brandPillX = (1080 - brandPillW) / 2;
   const brandPillY = cardY + 60;
 
   ctx.save();
   ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
-  drawRoundedRect(ctx, brandPillX, brandPillY, brandPillW, brandPillH, 29);
+  drawRoundedRect(ctx, brandPillX, brandPillY, brandPillW, brandPillH, 25);
   ctx.fill();
 
   ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
   ctx.lineWidth = 1.2;
-  drawRoundedRect(ctx, brandPillX, brandPillY, brandPillW, brandPillH, 29);
+  drawRoundedRect(ctx, brandPillX, brandPillY, brandPillW, brandPillH, 25);
   ctx.stroke();
 
-  // Draw Logo mark
-  const topLogoSize = 32;
-  const topLogoX = brandPillX + 18;
-  const topLogoY = brandPillY + (brandPillH - topLogoSize) / 2;
-  drawWhisperLogoMark(ctx, topLogoX, topLogoY, topLogoSize, logoImg);
-
+  // Draw Clean Centered Wordmark
   ctx.fillStyle = "#ffffff";
   ctx.font = `800 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-  ctx.textAlign = "left";
+  ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("WHISPER", topLogoX + topLogoSize + 12, brandPillY + brandPillH / 2);
+  ctx.fillText("WHISPER", 540, brandPillY + brandPillH / 2);
   ctx.restore();
 
   // 5. Center Prompt Message Box (Hero Element)
@@ -697,40 +667,25 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
   ctx.fillText(sealText, sealStartX + dotRadius * 2 + dotSpacing, sealY);
   ctx.restore();
 
-  // 10. Bottom Story Canvas Branding (Authentic Whisper Logo & Wordmark)
+  // 10. Bottom Story Canvas Branding (Clean Centered Wordmark)
   const brandCenterY = 1730;
-  const logoSize = 46;
-  const brandWordmark = "WHISPER";
 
   ctx.save();
-  ctx.font = `900 40px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-  const wordmarkMetrics = ctx.measureText(brandWordmark);
-  const totalBrandW = logoSize + 16 + wordmarkMetrics.width;
-  const brandStartX = 540 - totalBrandW / 2;
-  const logoY = brandCenterY - logoSize / 2 - 14;
-
-  // 1. Draw Authentic Logo Mark
-  drawWhisperLogoMark(ctx, brandStartX, logoY, logoSize, logoImg);
-
-  // 2. Draw Wordmark Text
-  const logoGrad = ctx.createLinearGradient(brandStartX + logoSize + 16, 0, brandStartX + totalBrandW, 0);
-  logoGrad.addColorStop(0, "#ffffff");
-  logoGrad.addColorStop(0.6, "#e0e7ff");
-  logoGrad.addColorStop(1, glowTheme.strokeColors[0] || "#c084fc");
-  ctx.fillStyle = logoGrad;
+  ctx.font = `900 42px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  ctx.fillStyle = "#ffffff";
   ctx.shadowColor = glowTheme.badgeGlow;
   ctx.shadowBlur = 18;
-  ctx.textAlign = "left";
+  ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(brandWordmark, brandStartX + logoSize + 16, logoY + logoSize / 2);
+  ctx.fillText("WHISPER", 540, brandCenterY - 14);
 
-  // 3. Draw Subtitle
+  // Subtitle
   ctx.font = `600 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
   ctx.fillStyle = "rgba(203, 213, 225, 0.75)";
   ctx.textAlign = "center";
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
-  ctx.fillText("anonymous & encrypted messaging", 540, logoY + logoSize + 26);
+  ctx.fillText("anonymous & encrypted messaging", 540, brandCenterY + 24);
   ctx.restore();
 
   return new Promise((resolve, reject) => {

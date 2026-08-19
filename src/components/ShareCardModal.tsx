@@ -6,15 +6,17 @@ import {
   Copy, 
   CheckCircle2, 
   X, 
-  Sparkles, 
   Shuffle, 
   Pencil, 
   Check, 
-  RotateCcw 
+  RotateCcw,
+  Smartphone,
+  Square,
+  ArrowLeft
 } from "lucide-react";
-import { generateProfileShareCard, ProfileCardTheme } from "../lib/canvasImage";
-import { WhisperMode, getModeUrl } from "../lib/whisperModes";
-import { getRandomPromptForMode, getNextPromptForMode, buildModeShareUrl } from "../lib/modeTemplates";
+import { generateProfileShareCard, generateShareImageBlob, ProfileCardTheme } from "../lib/canvasImage";
+import { WhisperMode } from "../lib/whisperModes";
+import { getNextPromptForMode, buildModeShareUrl } from "../lib/modeTemplates";
 
 interface ShareCardModalProps {
   isOpen: boolean;
@@ -31,12 +33,12 @@ interface ShareCardModalProps {
   onPromptChange?: (modeId: string, newPrompt: string, newUrl: string) => void;
 }
 
-const THEME_OPTIONS: { id: ProfileCardTheme; name: string; bg: string; border: string; text: string }[] = [
-  { id: "obsidian", name: "Obsidian", bg: "bg-slate-900", border: "border-purple-500", text: "text-purple-400" },
-  { id: "neon", name: "Cyberpunk", bg: "bg-purple-950", border: "border-pink-500", text: "text-pink-400" },
-  { id: "velvet", name: "Velvet Rose", bg: "bg-rose-950", border: "border-rose-500", text: "text-rose-400" },
-  { id: "sunset", name: "Sunset", bg: "bg-orange-950", border: "border-orange-500", text: "text-orange-400" },
-  { id: "cyberpunk", name: "Emerald", bg: "bg-emerald-950", border: "border-emerald-500", text: "text-emerald-400" }
+const THEME_OPTIONS: { id: ProfileCardTheme; name: string; color: string; border: string }[] = [
+  { id: "obsidian", name: "Obsidian", color: "bg-slate-900", border: "border-purple-500" },
+  { id: "neon", name: "Neon", color: "bg-purple-900", border: "border-pink-500" },
+  { id: "velvet", name: "Velvet", color: "bg-rose-900", border: "border-rose-500" },
+  { id: "sunset", name: "Sunset", color: "bg-amber-900", border: "border-orange-500" },
+  { id: "cyberpunk", name: "Emerald", color: "bg-emerald-900", border: "border-emerald-500" }
 ];
 
 export default function ShareCardModal({
@@ -53,18 +55,17 @@ export default function ShareCardModal({
   mode,
   onPromptChange
 }: ShareCardModalProps) {
-  // Automatically detect the mode's headline and details
   const activeModeTitle = modeTitle || mode?.name || "Anonymous Whisper";
   const activeModeIcon = modeIcon || mode?.icon || "🤫";
   const modeId = mode?.id || "anonymous";
 
+  const [cardFormat, setCardFormat] = useState<"story" | "square">("square");
   const [currentPrompt, setCurrentPrompt] = useState<string>(
     modePrompt || mode?.prompt || "send me anonymous messages!"
   );
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [editedPromptText, setEditedPromptText] = useState(currentPrompt);
 
-  // Sync state when props change
   useEffect(() => {
     if (isOpen) {
       const initialPrompt = modePrompt || mode?.prompt || "send me anonymous messages!";
@@ -74,7 +75,6 @@ export default function ShareCardModal({
     }
   }, [isOpen, modePrompt, mode]);
 
-  // Compute active public URL with custom prompt if set
   const activeShareUrl = React.useMemo(() => {
     if (mode) {
       return buildModeShareUrl(mode, username, currentPrompt);
@@ -97,10 +97,9 @@ export default function ShareCardModal({
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 2500);
   };
 
-  // Reset/re-render when modal opens or key parameters change
   useEffect(() => {
     if (!isOpen) return;
 
@@ -110,15 +109,26 @@ export default function ShareCardModal({
 
     const renderCard = async () => {
       try {
-        const result = await generateProfileShareCard({
-          username,
-          displayName,
-          photoURL,
-          avatarUrl,
-          publicUrl: activeShareUrl,
-          theme: selectedTheme,
-          headline: cardHeadline
-        });
+        let result;
+        if (cardFormat === "story") {
+          result = await generateShareImageBlob({
+            text: cardHeadline,
+            username,
+            publicUrl: activeShareUrl,
+            theme: selectedTheme,
+            mode: mode || modeId
+          });
+        } else {
+          result = await generateProfileShareCard({
+            username,
+            displayName,
+            photoURL,
+            avatarUrl,
+            publicUrl: activeShareUrl,
+            theme: selectedTheme,
+            headline: cardHeadline
+          });
+        }
 
         if (isMounted) {
           setRenderedCard(result);
@@ -136,15 +146,14 @@ export default function ShareCardModal({
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [isOpen, username, displayName, photoURL, avatarUrl, activeShareUrl, selectedTheme, cardHeadline]);
+  }, [isOpen, cardFormat, username, displayName, photoURL, avatarUrl, activeShareUrl, selectedTheme, cardHeadline, mode, modeId]);
 
-  // Shuffle prompt handler (picks from the 30 pre-built templates)
   const handleShufflePrompt = () => {
     const nextPrompt = getNextPromptForMode(modeId, currentPrompt);
     setCurrentPrompt(nextPrompt);
     setEditedPromptText(nextPrompt);
     setIsEditingPrompt(false);
-    showToast("Prompt shuffled! 🎲");
+    showToast("Prompt shuffled 🎲");
     
     if (mode && onPromptChange) {
       const newUrl = buildModeShareUrl(mode, username, nextPrompt);
@@ -152,7 +161,6 @@ export default function ShareCardModal({
     }
   };
 
-  // Save edited prompt handler
   const handleSaveEditedPrompt = () => {
     const trimmed = editedPromptText.trim();
     if (!trimmed) {
@@ -169,7 +177,6 @@ export default function ShareCardModal({
     }
   };
 
-  // Reset prompt to default handler
   const handleResetPrompt = () => {
     const defaultPrompt = mode?.prompt || "send me anonymous messages!";
     setCurrentPrompt(defaultPrompt);
@@ -187,10 +194,10 @@ export default function ShareCardModal({
     try {
       await navigator.clipboard.writeText(activeShareUrl);
       setCopied(true);
-      showToast("Link copied to clipboard!");
+      showToast("Link copied!");
       setTimeout(() => setCopied(false), 2000);
     } catch (_) {
-      showToast("Could not copy link automatically");
+      showToast("Could not copy link");
     }
   };
 
@@ -201,7 +208,7 @@ export default function ShareCardModal({
     link.download = `whisper-${sanitizedTitle}-${username}.png`;
     link.href = renderedCard.dataUrl;
     link.click();
-    showToast("Share card image downloaded!");
+    showToast("Card image downloaded!");
   };
 
   const handleShareCard = async () => {
@@ -223,7 +230,7 @@ export default function ShareCardModal({
           text: cardHeadline,
           url: activeShareUrl
         });
-        showToast("Shared card successfully!");
+        showToast("Shared successfully!");
       } else if (navigator.share) {
         await navigator.share({
           title: cardHeadline,
@@ -233,11 +240,9 @@ export default function ShareCardModal({
       } else {
         handleDownload();
         await handleCopyLink();
-        showToast("Card saved & link copied to clipboard!");
       }
     } catch (err: any) {
       if (err?.name !== "AbortError") {
-        console.warn("Native share fallback triggered:", err);
         handleDownload();
         handleCopyLink();
       }
@@ -248,206 +253,209 @@ export default function ShareCardModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.94, y: 15 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.94, y: 15 }}
-          transition={{ type: "spring", stiffness: 350, damping: 28 }}
-          className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-2xl relative overflow-hidden flex flex-col my-auto max-h-[94vh]"
-        >
-          {/* Header Bar */}
-          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center text-lg shadow-inner shrink-0">
-                <span>{activeModeIcon}</span>
-              </div>
-              <div className="min-w-0">
-                <h3 className="font-bold text-base text-slate-900 dark:text-white leading-tight truncate">
-                  Share {activeModeTitle} Card
-                </h3>
-                <p className="text-xs text-slate-500 truncate">
-                  Ready to post to your Instagram story, Snapchat, or status
-                </p>
-              </div>
-            </div>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 bg-black/95 text-white flex flex-col backdrop-blur-2xl select-none"
+      >
+        {/* Sleek Minimal Header */}
+        <header className="px-4 py-3 pt-[max(0.75rem,calc(0.75rem+env(safe-area-inset-top,0px)))] flex items-center justify-between z-20 shrink-0">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="p-2 -ml-2 text-slate-400 hover:text-white rounded-full transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+
+          {/* Format Toggle Pill */}
+          <div className="flex items-center bg-white/10 backdrop-blur-md rounded-full p-0.5 border border-white/10">
             <button
-              onClick={onClose}
-              aria-label="Close share card dialog"
-              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              type="button"
+              onClick={() => setCardFormat("square")}
+              className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                cardFormat === "square" 
+                  ? "bg-white text-slate-900 shadow-sm" 
+                  : "text-white/70 hover:text-white"
+              }`}
             >
-              <X className="w-5 h-5" />
+              <Square className="w-3.5 h-3.5" />
+              <span>Square</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCardFormat("story")}
+              className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                cardFormat === "story" 
+                  ? "bg-white text-slate-900 shadow-sm" 
+                  : "text-white/70 hover:text-white"
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Story</span>
             </button>
           </div>
 
-          {/* Toast Banner */}
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="p-2 -mr-2 text-slate-400 hover:text-white rounded-full transition-colors cursor-pointer"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </header>
+
+        {/* Center Canvas Stage (Spacious, airy preview) */}
+        <div className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden relative">
+          {/* Toast Banner Overlay */}
           {toastMessage && (
-            <div className="mt-2 py-1.5 px-3 bg-indigo-600 text-white font-bold text-xs rounded-xl text-center shadow-lg animate-in fade-in shrink-0">
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 py-1.5 px-4 bg-indigo-600 text-white font-semibold text-xs rounded-full shadow-2xl animate-in fade-in zoom-in-95">
               {toastMessage}
             </div>
           )}
 
-          {/* Prompt Controls: Edit & Random Shuffle */}
-          <div className="pt-2.5 pb-1 shrink-0">
-            <div className="bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                  <span>Card Prompt</span>
-                </span>
-
-                {/* Edit & Random Change Action Icons (Only Icons) */}
-                <div className="flex items-center gap-1.5">
-                  {/* Shuffle / Random Prompt (Only Icon) */}
-                  <button
-                    type="button"
-                    onClick={handleShufflePrompt}
-                    title="Random change prompt (30 templates)"
-                    aria-label="Random change prompt"
-                    className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-2xs"
-                  >
-                    <Shuffle className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* Edit Custom Prompt (Only Icon) */}
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingPrompt(!isEditingPrompt)}
-                    title={isEditingPrompt ? "Cancel editing" : "Edit custom prompt"}
-                    aria-label={isEditingPrompt ? "Cancel editing" : "Edit custom prompt"}
-                    className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-2xs ${
-                      isEditingPrompt
-                        ? "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white border-slate-300 dark:border-slate-600"
-                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
-                    }`}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* Reset to Default (Only Icon) */}
-                  {currentPrompt !== mode?.prompt && (
-                    <button
-                      type="button"
-                      onClick={handleResetPrompt}
-                      title="Reset to default prompt"
-                      aria-label="Reset to default prompt"
-                      className="w-7 h-7 rounded-lg border border-slate-200/80 dark:border-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-2xs"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
+          {/* Card Preview Image */}
+          <div className="relative w-full h-full flex items-center justify-center">
+            {renderedCard ? (
+              <motion.img
+                key={`${cardFormat}-${selectedTheme}-${currentPrompt}`}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.2 }}
+                src={renderedCard.dataUrl}
+                alt={`Whisper ${activeModeTitle} Card`}
+                className={`max-w-full max-h-full object-contain rounded-2xl shadow-2xl ${
+                  cardFormat === "story" ? "aspect-[9/16]" : "aspect-square"
+                }`}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-white/50">
+                <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                <span className="text-xs">Generating card...</span>
               </div>
+            )}
+          </div>
+        </div>
 
-              {/* Inline Editor or Display Text */}
-              {isEditingPrompt ? (
-                <div className="flex items-center gap-1.5 pt-1">
-                  <input
-                    type="text"
-                    value={editedPromptText}
-                    onChange={(e) => setEditedPromptText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSaveEditedPrompt();
-                      if (e.key === "Escape") setIsEditingPrompt(false);
-                    }}
-                    placeholder="Type your custom question or prompt..."
-                    maxLength={100}
-                    className="flex-1 bg-white dark:bg-slate-900 border border-indigo-400 dark:border-indigo-600 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveEditedPrompt}
-                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 shadow-xs cursor-pointer"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Apply</span>
-                  </button>
-                </div>
-              ) : (
-                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-snug line-clamp-2">
-                  "{currentPrompt}"
-                </p>
+        {/* Minimal Bottom Control Bar */}
+        <div className="px-4 pb-[max(1rem,calc(1rem+env(safe-area-inset-bottom,0px)))] pt-2 flex flex-col gap-3 shrink-0 max-w-lg mx-auto w-full z-20">
+          {/* Inline Prompt Edit Drawer (if active) */}
+          {isEditingPrompt && (
+            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-2xl p-1.5 border border-white/10 animate-in fade-in slide-in-from-bottom-2">
+              <input
+                type="text"
+                value={editedPromptText}
+                onChange={(e) => setEditedPromptText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveEditedPrompt();
+                  if (e.key === "Escape") setIsEditingPrompt(false);
+                }}
+                placeholder="Type your custom question..."
+                maxLength={100}
+                className="flex-1 bg-transparent px-3 py-1.5 text-xs text-white placeholder-white/40 focus:outline-none"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={handleSaveEditedPrompt}
+                className="p-1.5 bg-white text-slate-900 rounded-xl transition-all hover:bg-white/90 cursor-pointer shrink-0"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Minimal Controls Row: Theme Dots + Shuffle/Edit Icons */}
+          <div className="flex items-center justify-between gap-3">
+            {/* Theme Dots */}
+            <div className="flex items-center gap-2">
+              {THEME_OPTIONS.map(th => (
+                <button
+                  key={th.id}
+                  onClick={() => setSelectedTheme(th.id)}
+                  title={th.name}
+                  className={`w-7 h-7 rounded-full ${th.color} border transition-all cursor-pointer ${
+                    selectedTheme === th.id 
+                      ? "ring-2 ring-white ring-offset-2 ring-offset-black scale-110 border-white" 
+                      : "border-white/20 opacity-70 hover:opacity-100"
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* Prompt Tools */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleShufflePrompt}
+                title="Shuffle question"
+                className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-full text-xs font-semibold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+              >
+                <Shuffle className="w-3.5 h-3.5" />
+                <span>Shuffle</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsEditingPrompt(!isEditingPrompt)}
+                title="Edit question"
+                className={`p-1.5 rounded-full border transition-all active:scale-95 cursor-pointer ${
+                  isEditingPrompt
+                    ? "bg-white text-slate-900 border-white"
+                    : "bg-white/10 hover:bg-white/20 text-white border-white/10"
+                }`}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+
+              {currentPrompt !== mode?.prompt && (
+                <button
+                  type="button"
+                  onClick={handleResetPrompt}
+                  title="Reset prompt"
+                  className="p-1.5 bg-white/10 hover:bg-white/20 text-white/70 hover:text-white rounded-full border border-white/10 transition-all active:scale-95 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
               )}
             </div>
           </div>
 
-          {/* Theme / Style Selector Pills */}
-          <div className="py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
-            <span className="text-xs font-bold text-slate-400 mr-1 shrink-0 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-indigo-400" />
-              Theme:
-            </span>
-            {THEME_OPTIONS.map(th => (
-              <button
-                key={th.id}
-                onClick={() => setSelectedTheme(th.id)}
-                className={`px-2.5 py-1 rounded-xl font-bold text-xs transition-all shrink-0 flex items-center gap-1.5 border cursor-pointer ${
-                  selectedTheme === th.id
-                    ? `${th.bg} text-white border-indigo-500 shadow-sm ring-2 ring-indigo-500/30`
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700"
-                }`}
-              >
-                <div className={`w-2 h-2 rounded-full ${th.bg} ${th.border} border`} />
-                {th.name}
-              </button>
-            ))}
-          </div>
-
-          {/* Dedicated Share Card Image Preview */}
-          <div className="relative w-full aspect-square bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex items-center justify-center p-2 my-1 shrink-0 max-h-[300px]">
-            {renderedCard ? (
-              <img
-                src={renderedCard.dataUrl}
-                alt={`Whisper ${activeModeTitle} Card`}
-                className="w-full h-full object-contain rounded-xl shadow-2xl pointer-events-none animate-in fade-in zoom-in-95 duration-200"
-              />
-            ) : (
-              <div className="flex flex-col items-center gap-2 text-slate-400">
-                <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs font-semibold">Generating your {activeModeTitle} card...</span>
-              </div>
-            )}
-          </div>
-
-          {/* Action Buttons */}
-          <div className="pt-2 space-y-2 shrink-0">
-            {/* Primary Action: Share Card & Link */}
+          {/* Action Row */}
+          <div className="flex items-center gap-2">
             <button
               onClick={handleShareCard}
               disabled={isGenerating || !renderedCard?.blob}
-              className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm rounded-2xl shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+              className="flex-1 py-3 px-4 bg-white text-slate-950 hover:bg-white/90 font-bold text-sm rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             >
               <Share2 className="w-4 h-4" />
-              <span>Share Card & Link</span>
+              <span>Share to Story</span>
             </button>
 
-            {/* Secondary Actions Row: Save Image & Copy Link */}
-            <div className="flex gap-2">
-              <button
-                onClick={handleDownload}
-                disabled={isGenerating || !renderedCard?.dataUrl}
-                className="flex-1 py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 text-slate-500" />
-                <span>Save Image</span>
-              </button>
+            <button
+              onClick={handleDownload}
+              disabled={isGenerating || !renderedCard?.dataUrl}
+              title="Save Image"
+              className="p-3 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-2xl transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+            </button>
 
-              <button
-                onClick={handleCopyLink}
-                className="flex-1 py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                {copied ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5 text-slate-500" />
-                )}
-                <span>{copied ? "Copied!" : "Copy Link"}</span>
-              </button>
-            </div>
+            <button
+              onClick={handleCopyLink}
+              title="Copy Link"
+              className="p-3 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-2xl transition-all active:scale-95 cursor-pointer"
+            >
+              {copied ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
           </div>
-        </motion.div>
-      </div>
+        </div>
+      </motion.div>
     </AnimatePresence>
   );
 }
-

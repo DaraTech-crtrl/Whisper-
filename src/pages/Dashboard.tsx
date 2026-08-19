@@ -20,9 +20,6 @@ import {
   QrCode, 
   Clock, 
   Heart, 
-  ThumbsUp, 
-  ThumbsDown, 
-  Award, 
   Lock,
   ShieldAlert,
   Archive,
@@ -35,6 +32,8 @@ import {
   Filter,
   Plus,
   ArrowUpDown,
+  ArrowLeft,
+  ChevronLeft,
   HelpCircle,
   Globe,
   MapPin,
@@ -1473,6 +1472,14 @@ export default function Dashboard() {
                 const msgTags = msg.tags || [];
                 const msgMode = getMessageMode(msg);
 
+                // Filter out tags that duplicate the active whisper mode badge
+                const displayTags = msgTags.filter(tagKey => {
+                  const normalizedTag = tagKey.toLowerCase().trim();
+                  const normalizedModeId = (msgMode.id || "").toLowerCase().trim();
+                  const normalizedModeName = (msgMode.name || "").toLowerCase().trim();
+                  return normalizedTag !== normalizedModeId && normalizedTag !== normalizedModeName;
+                });
+
                 // Full Unread Message Card: sleek, unique anonymous row layout matching website light/dark theme
                 if (!msg.read) {
                   return (
@@ -1603,27 +1610,6 @@ export default function Dashboard() {
                             Deletes in {getArchiveDaysRemaining(msg)}d
                           </span>
                         )}
-
-                        {rep !== undefined && rep !== 0 && (
-                          <span className="flex items-center gap-1 text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full">
-                            <Award className="w-3 h-3" />
-                            Rep {rep > 0 ? '+' : ''}{rep}
-                          </span>
-                        )}
-
-                        {/* Hint Button Badge */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveHintMsg(msg);
-                          }}
-                          className="flex items-center gap-1 text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900/90 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 px-2 py-0.5 rounded-full transition-all shadow-2xs"
-                          title="View Sender Hint (IP, Location, Phone Name, Browser)"
-                        >
-                          <HelpCircle className="w-3 h-3 text-indigo-500" />
-                          <span>Hint</span>
-                        </button>
                       </div>
 
                       {/* Card Action Icons */}
@@ -1745,9 +1731,9 @@ export default function Dashboard() {
                     </div>
 
                     {/* Applied Tags List */}
-                    {msgTags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-2.5">
-                        {msgTags.map(tagKey => {
+                    {displayTags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {displayTags.map(tagKey => {
                           const tagDef = PRESET_TAGS[tagKey] || { label: tagKey, icon: "🏷️", bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-600 dark:text-slate-300", border: "border-slate-200" };
                           return (
                             <span
@@ -1767,43 +1753,6 @@ export default function Dashboard() {
                       </div>
                     )}
                     
-                    {/* Bottom Reaction & Rating Bar */}
-                    <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-2.5 mt-1" onClick={e => e.stopPropagation()}>
-                      <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide flex-1 items-center">
-                        <span className="text-xs font-medium text-slate-400 self-center mr-1.5"><Heart className="w-3.5 h-3.5" /></span>
-                        {QUICK_REACTIONS.map(emoji => (
-                          <button
-                            key={emoji}
-                            onClick={(e) => handleReact(msg.id, emoji === msg.reaction ? '' : emoji, e)}
-                            className={cn(
-                              "w-7 h-7 flex items-center justify-center rounded-full text-sm transition-all shrink-0",
-                              msg.reaction === emoji ? "bg-indigo-100 dark:bg-indigo-900/50 ring-2 ring-indigo-500/30 scale-110" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 opacity-70 hover:opacity-100 hover:scale-110"
-                            )}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                      
-                      {msg.senderId && (
-                        <div className="flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2.5 ml-2">
-                          <button
-                            onClick={(e) => handleRate(msg, e, 'up')}
-                            className={cn("p-1.5 rounded-full transition-colors", msg.rating === 1 ? "bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400" : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400")}
-                            title="Thumbs Up"
-                          >
-                            <ThumbsUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => handleRate(msg, e, 'down')}
-                            className={cn("p-1.5 rounded-full transition-colors", msg.rating === -1 ? "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400" : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400")}
-                            title="Thumbs Down"
-                          >
-                            <ThumbsDown className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
                   </motion.div>
                 );
               })}
@@ -1811,170 +1760,180 @@ export default function Dashboard() {
           </div>
         </div>
       
-      {/* Detail Modal */}
+      {/* Immersive Full Screen Message View Display (Cinematic Atmospheric Theme) */}
       <AnimatePresence>
         {selectedMessage && (() => {
           const selectedMode = getMessageMode(selectedMessage);
+          const decryptedText = decryptedCache[selectedMessage.id] || "Decrypting...";
+          const messageTimeStr = selectedMessage.createdAt?.seconds 
+            ? formatDistanceToNow(new Date(selectedMessage.createdAt.seconds * 1000), { addSuffix: true })
+            : "Just now";
+
           return (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
-            onClick={() => setSelectedMessage(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              onClick={e => e.stopPropagation()}
-              className="w-full max-w-sm my-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col gap-4 max-h-[92dvh] overflow-y-auto"
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.99 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.99 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col justify-between overflow-y-auto selection:bg-pink-500 selection:text-white"
             >
-              {/* Top Modal Header */}
-              <div className="flex items-center justify-between">
+              {/* Dynamic Atmospheric Mood Glow */}
+              <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-30">
+                <div className={cn("absolute -top-32 -left-32 w-96 h-96 rounded-full blur-3xl bg-gradient-to-br", selectedMode.gradient)} />
+                <div className={cn("absolute -bottom-32 -right-32 w-96 h-96 rounded-full blur-3xl bg-gradient-to-tl", selectedMode.gradient)} />
+              </div>
+
+              {/* Top Navigation Bar */}
+              <div className="relative z-10 w-full max-w-3xl mx-auto px-4 py-4 sm:py-5 flex items-center justify-between gap-3 border-b border-white/10 bg-slate-950/40 backdrop-blur-xl">
+                {/* Back to Inbox Button */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedMessage(null)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 active:scale-95 text-white/90 font-semibold text-xs sm:text-sm transition-all border border-white/15 shadow-sm group"
+                >
+                  <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+                  <span>Back to Inbox</span>
+                </button>
+
+                {/* Mode Indicator */}
                 <div className="flex items-center gap-2">
-                  <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-xs", selectedMode.msgBadgeBg)}>
+                  <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white/10 border border-white/15 text-white shadow-sm backdrop-blur-md">
                     <span>{selectedMode.icon}</span>
                     <span>{selectedMode.name}</span>
                   </span>
-                  {selectedMessage.archived && (
-                    <span className="bg-amber-500/20 text-amber-500 text-[10px] px-2 py-0.5 rounded-full font-bold">
-                      Archived
-                    </span>
-                  )}
                 </div>
-                <button 
+
+                {/* Close Button */}
+                <button
+                  type="button"
                   onClick={() => setSelectedMessage(null)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 hover:bg-white/15 text-white/80 hover:text-white flex items-center justify-center transition-all border border-white/15 active:scale-95 shadow-sm"
+                  title="Close Full Screen"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Version Themed Story Preview Card */}
-              <div className={cn("rounded-3xl overflow-hidden shadow-2xl p-[2.5px] bg-gradient-to-br transition-all", selectedMode.msgModalBorder)}>
-                <div className="rounded-[22px] bg-slate-950/95 p-5 text-white flex flex-col min-h-[220px] backdrop-blur-xl relative overflow-hidden">
-                  {/* Top Glowing Header Badge */}
-                  <div className="flex items-center justify-center mb-3">
-                    <span className={cn("bg-gradient-to-r text-[11px] font-bold tracking-wider px-3.5 py-1 rounded-full shadow-lg inline-flex items-center gap-1.5", selectedMode.msgModalBadge)}>
-                      <span>{selectedMode.icon}</span>
-                      <span>{selectedMode.badge.toUpperCase()} • 100% ANONYMOUS</span>
-                    </span>
+              {/* Center Main Message Card */}
+              <div className="relative z-10 flex-1 w-full max-w-2xl mx-auto px-4 sm:px-6 my-auto flex flex-col justify-center py-6 sm:py-10">
+                {/* Clean Glass Canvas */}
+                <div className="rounded-3xl bg-slate-900/90 backdrop-blur-2xl border border-white/15 p-7 sm:p-12 text-white flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden min-h-[280px] sm:min-h-[320px]">
+                  
+                  {/* Mode Accent Header Strip */}
+                  <div className={cn("absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r", selectedMode.gradient)} />
+
+                  {/* Card Header Row: Security & Time */}
+                  <div className="w-full flex items-center justify-between gap-2 pb-5 mb-4 border-b border-white/10">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-white/80">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>{selectedMode.badge}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
+                      <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>{messageTimeStr}</span>
+                    </div>
                   </div>
 
-                  <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent my-1"></div>
-
-                  {/* Body with Message Content */}
-                  <div className="py-4 flex-1 flex flex-col items-center justify-center text-center">
-                    {selectedMessage.reaction && (
-                      <div className="text-3xl mb-2 drop-shadow-md">{selectedMessage.reaction}</div>
-                    )}
-                    <p className="text-base sm:text-lg font-bold font-sans text-white leading-relaxed break-words whitespace-pre-wrap drop-shadow-lg">
-                      {selectedMessage.mood && <span className="mr-1.5">{selectedMessage.mood}</span>}
-                      {decryptedCache[selectedMessage.id] || "Decrypting..."}
-                    </p>
-                  </div>
-
-                  {/* Cyber Security Seal */}
-                  <div className="pt-2 text-center border-t border-slate-800/80">
-                    <p className="text-[10px] font-mono tracking-widest text-slate-400">
-                      /// END-TO-END ENCRYPTED {selectedMode.tagLabel.toUpperCase()} ///
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Message Tags Management in Modal */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Categorize & Tag:
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(PRESET_TAGS).map(([k, t]) => {
-                    const hasTag = (selectedMessage.tags || []).includes(k);
-                    return (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={(e) => handleToggleTag(selectedMessage.id, k, e)}
-                        className={cn(
-                          "px-2.5 py-1 rounded-xl text-xs font-bold transition-all border flex items-center gap-1",
-                          hasTag
-                            ? `${t.bg} ${t.text} ${t.border} ring-2 ring-indigo-500/30 scale-105`
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-500 border-transparent hover:border-slate-300 opacity-60 hover:opacity-100"
-                        )}
-                      >
-                        <span>{t.icon}</span>
-                        <span>{t.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col gap-2 pt-1">
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveHintMsg(selectedMessage);
-                  }}
-                  className="w-full bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-600 dark:text-indigo-300 font-semibold py-2.5 px-3 rounded-xl transition-colors border border-indigo-200/80 dark:border-indigo-800/80 flex items-center justify-center gap-1.5 text-xs shadow-xs"
-                >
-                  <Search className="w-3.5 h-3.5 text-indigo-500" />
-                  View Sender Hint (IP & Device)
-                </button>
-
-                <button 
-                  onClick={shareToStatus}
-                  disabled={isExporting}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60"
-                >
-                  {isExporting ? (
-                    <span className="animate-pulse">Generating Story Image...</span>
-                  ) : (
-                    <>
-                      <Share2 className="w-4 h-4" />
-                      Share to WhatsApp / Story
-                    </>
+                  {/* Mood Emoji if present */}
+                  {selectedMessage.mood && (
+                    <div className="text-3xl sm:text-4xl mb-3">
+                      {selectedMessage.mood}
+                    </div>
                   )}
-                </button>
 
-                <div className="grid grid-cols-2 gap-2">
+                  {/* Full Decrypted Message Text */}
+                  <p className="text-xl sm:text-3xl font-extrabold tracking-tight text-white leading-relaxed break-words whitespace-pre-wrap max-w-xl my-4 text-center drop-shadow-sm">
+                    {decryptedText}
+                  </p>
+
+                  {/* Card Security Footer */}
+                  <div className="mt-6 pt-4 w-full border-t border-white/10 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-mono tracking-wider uppercase">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>End-to-end encrypted anonymous message</span>
+                  </div>
+
+                </div>
+
+                {/* Categorize & Tags Bar */}
+                <div className="mt-5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Tags
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                    {Object.entries(PRESET_TAGS).map(([k, t]) => {
+                      const hasTag = (selectedMessage.tags || []).includes(k);
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={(e) => handleToggleTag(selectedMessage.id, k, e)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border flex items-center gap-1.5 shadow-xs",
+                            hasTag
+                              ? `${t.bg} ${t.text} ${t.border} ring-2 ring-white/30 scale-105`
+                              : "bg-white/5 text-slate-300 border-white/10 hover:bg-white/15 hover:text-white"
+                          )}
+                        >
+                          <span>{t.icon}</span>
+                          <span>{t.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Action Toolbar (Download & Share Only) */}
+              <div className="relative z-10 w-full max-w-3xl mx-auto px-4 py-4 sm:py-5 border-t border-white/10 bg-slate-950/40 backdrop-blur-xl">
+                <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                  
+                  {/* Sender Hint Button */}
+                  {!restrictSenderHints && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveHintMsg(selectedMessage);
+                      }}
+                      className="w-full sm:w-auto px-4 py-3.5 bg-white/10 hover:bg-white/15 text-white font-semibold rounded-2xl transition-all flex items-center justify-center gap-2 text-xs border border-white/15 shrink-0"
+                    >
+                      <Search className="w-4 h-4 text-indigo-400" />
+                      <span>Sender Hint</span>
+                    </button>
+                  )}
+
+                  {/* Share to Story / WhatsApp (Primary Action matching Version Theme) */}
+                  <button 
+                    onClick={shareToStatus}
+                    disabled={isExporting}
+                    className={cn("w-full flex-1 text-white font-bold py-3.5 px-6 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base disabled:opacity-60 active:scale-98 bg-gradient-to-r hover:brightness-110", selectedMode.gradient)}
+                  >
+                    {isExporting ? (
+                      <span className="animate-pulse">Generating image...</span>
+                    ) : (
+                      <>
+                        <Share2 className="w-4 h-4" />
+                        <span>Share to Story / WhatsApp</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Download PNG (Secondary Action) */}
                   <button 
                     onClick={downloadCardImage}
                     disabled={isExporting}
-                    className="w-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium py-2 px-3 rounded-xl transition-colors flex items-center justify-center gap-1.5 text-xs disabled:opacity-60"
+                    className="w-full sm:w-auto px-5 py-3.5 bg-white/10 hover:bg-white/20 active:scale-98 text-white font-semibold rounded-2xl transition-all flex items-center justify-center gap-2 text-xs sm:text-sm border border-white/15 shadow-sm disabled:opacity-60 shrink-0"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    Download PNG
+                    <Download className="w-4 h-4" />
+                    <span>Download PNG</span>
                   </button>
 
-                  <button 
-                    onClick={(e) => handleToggleArchive(selectedMessage.id, Boolean(selectedMessage.archived), e)}
-                    className={cn(
-                      "w-full font-medium py-2 px-3 rounded-xl transition-colors flex items-center justify-center gap-1.5 text-xs",
-                      selectedMessage.archived
-                        ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
-                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
-                    )}
-                  >
-                    {selectedMessage.archived ? (
-                      <>
-                        <ArchiveRestore className="w-3.5 h-3.5 text-amber-500" />
-                        Restore
-                      </>
-                    ) : (
-                      <>
-                        <Archive className="w-3.5 h-3.5" />
-                        Archive
-                      </>
-                    )}
-                  </button>
                 </div>
               </div>
+
             </motion.div>
-          </motion.div>
           );
         })()}
       </AnimatePresence>

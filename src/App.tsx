@@ -18,15 +18,41 @@ function RouteManifestSync() {
   const location = useLocation();
 
   useEffect(() => {
-    const manifestEl = document.getElementById("app-manifest-link") as HTMLLinkElement | null;
     const isAdmin = location.pathname.startsWith("/admin");
 
-    if (manifestEl) {
-      manifestEl.href = isAdmin ? "/manifest-admin.json" : "/manifest.json";
+    // 1. Recreate manifest link to force WebKit/Blink to reload manifest
+    const existingManifest = document.getElementById("app-manifest-link");
+    if (existingManifest) {
+      existingManifest.remove();
     }
+    const newManifest = document.createElement("link");
+    newManifest.id = "app-manifest-link";
+    newManifest.rel = "manifest";
+    newManifest.href = isAdmin ? "/manifest-admin.json" : "/manifest.json";
+    document.head.appendChild(newManifest);
 
+    // 2. Sync Apple Mobile Web App Title for iOS Safari Add to Home Screen
+    let appleTitleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]') as HTMLMetaElement | null;
+    if (!appleTitleMeta) {
+      appleTitleMeta = document.createElement("meta");
+      appleTitleMeta.name = "apple-mobile-web-app-title";
+      document.head.appendChild(appleTitleMeta);
+    }
+    appleTitleMeta.content = isAdmin ? "Whisper Admin" : "Whisper";
+
+    // 3. Sync Canonical Link for iOS Safari
+    let canonicalLink = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonicalLink) {
+      canonicalLink = document.createElement("link");
+      canonicalLink.rel = "canonical";
+      document.head.appendChild(canonicalLink);
+    }
+    const targetPath = isAdmin ? "/admin/unknownofrun" : (location.pathname || "/");
+    canonicalLink.href = `${window.location.origin}${targetPath}`;
+
+    // 4. Document Title
     if (isAdmin) {
-      document.title = "Whisper Admin Console — Management & Security";
+      document.title = "Whisper Admin Console";
     } else {
       document.title = "Whisper — Anonymous Encrypted Messaging";
     }

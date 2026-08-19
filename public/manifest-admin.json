@@ -1,9 +1,10 @@
 {
-  "name": "Whisper Admin Console",
+  "id": "/admin/unknownofrun",
+  "name": "Whisper Admin",
   "short_name": "Whisper Admin",
   "description": "Administrative control center and security management for Whisper",
   "start_url": "/admin/unknownofrun",
-  "scope": "/",
+  "scope": "/admin/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0f172a",
@@ -36,3 +37,4 @@
     }
   ]
 }
+

@@ -27,6 +27,22 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="format-detection" content="telephone=no" />
 
+    <!-- Synchronous PWA & iOS Safari Route Sync before rendering -->
+    <script>
+      (function() {
+        try {
+          var p = window.location.pathname || '';
+          if (p.indexOf('/admin') === 0) {
+            var m = document.getElementById('app-manifest-link');
+            if (m) m.href = '/manifest-admin.json';
+            var t = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+            if (t) t.setAttribute('content', 'Whisper Admin');
+            document.title = 'Whisper Admin Console';
+          }
+        } catch (e) {}
+      })();
+    </script>
+
     <!-- Open Graph / Facebook / WhatsApp / Discord -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Whisper" />

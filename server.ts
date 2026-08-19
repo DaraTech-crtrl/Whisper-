@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import webpush from "web-push";
@@ -168,7 +169,22 @@ async function startServer() {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      const isAdmin = req.path.startsWith("/admin");
+      if (isAdmin && fs.existsSync(indexPath)) {
+        try {
+          let html = fs.readFileSync(indexPath, "utf-8");
+          html = html
+            .replace(/href="\/manifest\.json"/g, 'href="/manifest-admin.json"')
+            .replace(/content="Whisper"/g, 'content="Whisper Admin"')
+            .replace(/<title>.*?<\/title>/, '<title>Whisper Admin Console</title>');
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          return res.send(html);
+        } catch (err) {
+          // fallback
+        }
+      }
+      res.sendFile(indexPath);
     });
   }
 

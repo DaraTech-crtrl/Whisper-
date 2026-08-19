@@ -2634,27 +2634,37 @@ export default function AdminDashboard() {
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className={`w-full max-w-sm p-6 rounded-3xl border shadow-2xl relative z-10 space-y-4 ${
+              className={`w-full max-w-md p-6 rounded-3xl border shadow-2xl relative z-10 space-y-4 ${
                 isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
               }`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-bold text-sm">
                   <Download className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                  <span>Install on iOS Safari</span>
+                  <span>Install Whisper Admin PWA</span>
                 </div>
                 <button
                   onClick={() => setShowIOSGuide(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
+              <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/60 rounded-2xl text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-indigo-950 dark:text-indigo-200">App Name: Whisper Admin</span>
+                  <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-md">Standalone PWA</span>
+                </div>
+                <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80 font-mono break-all">
+                  Target Route: /admin/unknownofrun
+                </p>
+              </div>
+
+              <div className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
                 <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200/80 dark:border-slate-800">
                   <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">1</span>
-                  <span>Tap the <strong>Share</strong> button (box with an upward arrow) in Safari's bottom toolbar.</span>
+                  <span>Tap the Safari <strong>Share</strong> button (square box with an upward arrow) in the bottom toolbar.</span>
                 </div>
                 <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200/80 dark:border-slate-800">
                   <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">2</span>
@@ -2662,13 +2672,13 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex items-start gap-3 p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200/80 dark:border-slate-800">
                   <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">3</span>
-                  <span>Tap <strong>Add</strong> in the top right corner to launch Whisper Admin as a standalone app.</span>
+                  <span>Confirm the title shows <strong>Whisper Admin</strong> and tap <strong>Add</strong>. It will open directly into the Admin Console!</span>
                 </div>
               </div>
 
               <button
                 onClick={() => setShowIOSGuide(false)}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-xs transition-colors"
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-xs transition-colors cursor-pointer"
               >
                 Got It
               </button>

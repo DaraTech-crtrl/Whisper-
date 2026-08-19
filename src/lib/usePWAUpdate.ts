@@ -39,9 +39,12 @@ export function usePWAUpdate() {
   const currentVersionData = localVersionData as VersionInfo;
   const currentVersion = currentVersionData.displayVersion || currentVersionData.version || "Whisper v1.0.0";
 
+  const [isAutoUpdating, setIsAutoUpdating] = useState(false);
+
   // Apply update, clear stale cache, store applied version, and reload page safely
   const applyUpdate = useCallback(async () => {
     try {
+      setIsAutoUpdating(true);
       if (remoteVersion) {
         try {
           localStorage.setItem("whisper_applied_version", remoteVersion);
@@ -121,6 +124,11 @@ export function usePWAUpdate() {
 
           if (manual) {
             setUpdateStatusText(`New update ${newLabel} is ready!`);
+          } else if (autoUpdate && !(import.meta as any).env?.DEV) {
+            setUpdateStatusText(`Auto-applying new update ${newLabel}...`);
+            setTimeout(() => {
+              applyUpdate();
+            }, 1200);
           }
         } else {
           // If already on this version or applied, sync state
@@ -146,6 +154,12 @@ export function usePWAUpdate() {
             setUpdateAvailable(true);
             isNewVersionFound = true;
             if (manual) setUpdateStatusText("Service worker update ready to install!");
+            if (autoUpdate && !manual && !(import.meta as any).env?.DEV) {
+              setUpdateStatusText("Auto-applying service worker update...");
+              setTimeout(() => {
+                applyUpdate();
+              }, 1200);
+            }
           } else if (manual) {
             await registration.update();
             if (registration.waiting) {
@@ -164,7 +178,7 @@ export function usePWAUpdate() {
     setLastChecked(new Date());
     if (manual) setIsChecking(false);
     return isNewVersionFound;
-  }, [currentVersionData, currentVersion]);
+  }, [currentVersionData, currentVersion, autoUpdate, applyUpdate]);
 
   // Dismiss update banner for this specific version
   const dismissUpdate = useCallback(() => {
@@ -239,6 +253,7 @@ export function usePWAUpdate() {
     remoteVersion,
     updateAvailable,
     isChecking,
+    isAutoUpdating,
     lastChecked,
     autoUpdate,
     updateStatusText,

@@ -840,7 +840,7 @@ export default function AdminDashboard() {
     { id: "ratings", label: "Ratings & Feedback", icon: Star, badge: ratingsList.length },
     { id: "system-logs", label: "System Error Logs", icon: Bug, badge: systemLogsList.length > 0 ? systemLogsList.length : null },
     { id: "settings", label: "System Controls", icon: Sliders, badge: settings.maintenanceMode ? "MAINT" : null },
-    { id: "updates", label: "Platform & Builds", icon: Cpu, badge: currentVersion },
+    { id: "updates", label: "PWA & Builds", icon: Cpu, badge: pwaUpdate.updateAvailable ? "UPDATE" : currentVersion },
     { id: "security", label: "Audit & Event Logs", icon: Shield, badge: logs.length },
   ];
 
@@ -1108,15 +1108,41 @@ export default function AdminDashboard() {
               </button>
             )}
 
+            {/* PWA Auto-Update Toggle in Header */}
+            <button
+              onClick={() => {
+                const next = !pwaUpdate.autoUpdate;
+                pwaUpdate.toggleAutoUpdate(next);
+                showToast("Auto-Update", `PWA Auto-Update is now ${next ? "enabled (auto-applies new versions)" : "disabled (prompts first)"}`, "info");
+              }}
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                pwaUpdate.autoUpdate
+                  ? "bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/80 text-indigo-700 dark:text-indigo-300"
+                  : "bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400"
+              }`}
+              title={`Click to ${pwaUpdate.autoUpdate ? "disable" : "enable"} PWA Auto-Update mode`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Auto-Update: <strong className="font-bold">{pwaUpdate.autoUpdate ? "ON" : "OFF"}</strong></span>
+            </button>
+
+            {/* PWA Checking Indicator */}
+            {pwaUpdate.isChecking && (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 rounded-xl text-xs font-medium border border-indigo-200/60 dark:border-indigo-800/60">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span className="hidden md:inline">Checking updates...</span>
+              </span>
+            )}
+
             {/* PWA Update Ready Action */}
             {pwaUpdate.updateAvailable && (
               <button
                 onClick={pwaUpdate.applyUpdate}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold animate-pulse shadow-md cursor-pointer transition-colors"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold animate-pulse shadow-md cursor-pointer transition-colors"
                 title="A new website update is ready! Click to apply now"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Update Ready</span>
+                <span>Update Ready {pwaUpdate.remoteVersion ? `(${pwaUpdate.remoteVersion})` : ""}</span>
               </button>
             )}
 

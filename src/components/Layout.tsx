@@ -66,13 +66,15 @@ export default function Layout() {
       {!isWelcomeOrAuth && (
         <header className="px-4 pb-3.5 pt-[max(0.875rem,calc(0.875rem+env(safe-area-inset-top,0px)))] border-b border-slate-100 dark:border-slate-900 flex justify-between items-center sticky top-0 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md z-30 transition-all">
           <Link to="/" className="flex items-center gap-2.5 font-bold text-xl text-indigo-600 dark:text-indigo-400">
-            <img 
-              src={getAssetUrl("android-chrome-192x192.png")} 
-              alt="Whisper Logo" 
-              className="w-7 h-7 rounded-lg shadow-sm bg-white border border-slate-100 p-0.5"
-              referrerPolicy="no-referrer"
-            />
-            <span>Whisper</span>
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-sm overflow-hidden shrink-0 border border-indigo-200/50 dark:border-indigo-800/50">
+              <img 
+                src={getAssetUrl("android-chrome-192x192.png")} 
+                alt="Whisper Logo" 
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <span className="tracking-tight">Whisper</span>
           </Link>
           {user && (
             <div className="flex items-center gap-1">

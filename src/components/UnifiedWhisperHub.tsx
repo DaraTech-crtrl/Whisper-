@@ -9,7 +9,10 @@ import {
   Pencil, 
   RotateCcw, 
   Clock, 
-  Check 
+  Share2,
+  Check, 
+  MessageCircle,
+  Twitter
 } from "lucide-react";
 import UserAvatar from "./UserAvatar";
 import { WhisperMode, WHISPER_MODES } from "../lib/whisperModes";
@@ -187,7 +190,7 @@ export default function UnifiedWhisperHub({
               )}
               title="Pause or resume receiving anonymous messages"
             >
-              <Clock className="w-3.5 h-3.5" />
+              <Clock className="w-3.5 h-3.5 shrink-0" />
               <span>{isLinkPaused ? "Paused" : "Active"}</span>
             </button>
           </div>
@@ -221,7 +224,7 @@ export default function UnifiedWhisperHub({
                       : "bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
                   )}
                 >
-                  <span className="text-sm">{mode.icon}</span>
+                  <span className="text-base shrink-0 select-none">{mode.icon}</span>
                   <span>{mode.name}</span>
                 </button>
               );
@@ -263,8 +266,8 @@ export default function UnifiedWhisperHub({
 
               {/* Mode Banner: Icon + Badge + Mode Name */}
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md border border-white/25 flex items-center justify-center text-xl shadow-inner shrink-0">
-                  <span>{activeMode.icon}</span>
+                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-2xl shadow-inner shrink-0">
+                  <span className="select-none">{activeMode.icon}</span>
                 </div>
                 <div>
                   <div className="inline-block px-2 py-0.5 rounded-full bg-white/20 text-white text-[9px] font-extrabold uppercase tracking-wider mb-0.5">
@@ -276,14 +279,14 @@ export default function UnifiedWhisperHub({
                 </div>
               </div>
 
-              {/* Prompt Interactive Box with ONLY ICONS for Shuffle / Edit / Reset */}
+              {/* Prompt Interactive Box with High-Visibility Action Icons */}
               <div className="bg-black/30 backdrop-blur-md rounded-2xl p-3 border border-white/20 space-y-2 mb-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-white/75">
                     Live Prompt
                   </span>
 
-                  {/* Prompt action icons (Shuffle, Edit, Reset) */}
+                  {/* Prompt Action Icons (Shuffle, Edit, Reset) */}
                   <div className="flex items-center gap-1.5">
                     {/* Random Shuffle Button (Only Icon) */}
                     <button
@@ -292,11 +295,11 @@ export default function UnifiedWhisperHub({
                         e.stopPropagation();
                         handleShuffle();
                       }}
-                      className="w-7 h-7 rounded-lg bg-white/20 hover:bg-white/30 active:scale-95 text-white transition-all flex items-center justify-center border border-white/25 cursor-pointer shadow-2xs"
+                      className="w-8 h-8 rounded-xl bg-white/25 hover:bg-white/35 active:scale-95 text-white transition-all flex items-center justify-center border border-white/30 cursor-pointer shadow-2xs shrink-0"
                       title="Random prompt (30 templates)"
                       aria-label="Random prompt"
                     >
-                      <Shuffle className="w-3.5 h-3.5" />
+                      <Shuffle className="w-4 h-4 text-white shrink-0" strokeWidth={2.2} />
                     </button>
 
                     {/* Edit Prompt Button (Only Icon) */}
@@ -311,15 +314,15 @@ export default function UnifiedWhisperHub({
                         }
                       }}
                       className={cn(
-                        "w-7 h-7 rounded-lg transition-all flex items-center justify-center border cursor-pointer active:scale-95 shadow-2xs",
+                        "w-8 h-8 rounded-xl transition-all flex items-center justify-center border cursor-pointer active:scale-95 shadow-2xs shrink-0",
                         isEditingPrompt
                           ? "bg-white text-slate-900 border-white"
-                          : "bg-white/20 hover:bg-white/30 text-white border-white/25"
+                          : "bg-white/25 hover:bg-white/35 text-white border-white/30"
                       )}
                       title={isEditingPrompt ? "Cancel editing" : "Edit custom prompt"}
                       aria-label={isEditingPrompt ? "Cancel editing" : "Edit custom prompt"}
                     >
-                      <Pencil className="w-3.5 h-3.5" />
+                      <Pencil className={cn("w-4 h-4 shrink-0", isEditingPrompt ? "text-slate-900" : "text-white")} strokeWidth={2.2} />
                     </button>
 
                     {/* Reset to Default (Only Icon) */}
@@ -330,11 +333,11 @@ export default function UnifiedWhisperHub({
                           e.stopPropagation();
                           handleReset();
                         }}
-                        className="w-7 h-7 rounded-lg border border-white/20 bg-white/10 text-white/90 hover:text-white hover:bg-white/25 flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-2xs"
+                        className="w-8 h-8 rounded-xl border border-white/30 bg-white/15 text-white hover:bg-white/30 flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-2xs shrink-0"
                         title="Reset to default prompt"
                         aria-label="Reset to default prompt"
                       >
-                        <RotateCcw className="w-3.5 h-3.5" />
+                        <RotateCcw className="w-4 h-4 text-white shrink-0" strokeWidth={2.2} />
                       </button>
                     )}
                   </div>
@@ -360,7 +363,7 @@ export default function UnifiedWhisperHub({
                       onClick={handleSaveEdit}
                       className="px-2.5 py-1.5 bg-white text-slate-900 font-bold rounded-xl text-xs hover:bg-slate-100 active:scale-95 transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
                     >
-                      <Check className="w-3 h-3" />
+                      <Check className="w-3.5 h-3.5 shrink-0" />
                       <span>Save</span>
                     </button>
                   </div>
@@ -371,7 +374,7 @@ export default function UnifiedWhisperHub({
                 )}
               </div>
 
-              {/* Main Link Pill (Without Copy Button as requested) */}
+              {/* Main Link Pill with External Link Icon */}
               <div className="bg-black/35 backdrop-blur-md rounded-2xl p-2.5 border border-white/20 flex items-center justify-between gap-2">
                 <div className="font-mono text-xs text-white/90 truncate select-all flex-1 px-1">
                   {activeShareUrl}
@@ -382,11 +385,11 @@ export default function UnifiedWhisperHub({
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="w-8 h-8 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-colors flex items-center justify-center border border-white/20 cursor-pointer shadow-2xs active:scale-95 shrink-0"
+                  className="w-8 h-8 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-colors flex items-center justify-center border border-white/25 cursor-pointer shadow-2xs active:scale-95 shrink-0"
                   title="Open live link"
                   aria-label="Open live link"
                 >
-                  <ExternalLink className="w-4 h-4" />
+                  <ExternalLink className="w-4 h-4 text-white shrink-0" strokeWidth={2.2} />
                 </a>
               </div>
             </motion.div>
@@ -421,14 +424,14 @@ export default function UnifiedWhisperHub({
 
         {/* 3. Action Center: Story Card + Copy Button + Social Quick Share */}
         <div className="space-y-2.5">
-          {/* Action Row: Generate Instagram Story Card + Copy Button (Icon-Only beside it) */}
+          {/* Action Row: Generate Instagram Story Card + Copy Button */}
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => onGenerateStoryCard(activeMode, activeShareUrl, activePrompt)}
               className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-indigo-600 hover:opacity-95 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
             >
-              <Sparkles className="w-4 h-4" />
+              <Sparkles className="w-4.5 h-4.5 text-amber-300 animate-pulse shrink-0" />
               <span>Generate Instagram Story Card</span>
             </button>
 
@@ -437,7 +440,7 @@ export default function UnifiedWhisperHub({
               type="button"
               onClick={handleCopyLink}
               className={cn(
-                "h-[46px] w-[46px] rounded-2xl flex items-center justify-center transition-all cursor-pointer active:scale-95 border shadow-sm shrink-0",
+                "h-[48px] w-[48px] rounded-2xl flex items-center justify-center transition-all cursor-pointer active:scale-95 border shadow-sm shrink-0",
                 copied
                   ? "bg-emerald-500 text-white border-emerald-400"
                   : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700"
@@ -446,22 +449,22 @@ export default function UnifiedWhisperHub({
               aria-label={copied ? "Copied" : "Copy link"}
             >
               {copied ? (
-                <CheckCircle2 className="w-5 h-5 text-white animate-in zoom-in-75 duration-150" />
+                <CheckCircle2 className="w-5 h-5 text-white animate-in zoom-in-75 duration-150 shrink-0" strokeWidth={2.5} />
               ) : (
-                <Copy className="w-5 h-5" />
+                <Copy className="w-5 h-5 text-slate-700 dark:text-slate-200 shrink-0" strokeWidth={2.2} />
               )}
             </button>
           </div>
 
-          {/* Social 1-Tap Quick Buttons */}
+          {/* Social 1-Tap Quick Buttons with Rich Icons */}
           <div className="grid grid-cols-3 gap-2">
             <a
               href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Send me a whisper! ${activeMode.icon} "${activePrompt}" 👉 ${activeShareUrl}`)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex flex-col items-center justify-center gap-1 transition-all text-xs font-bold text-center"
+              className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold text-center"
             >
-              <span className="text-lg">💬</span>
+              <MessageCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>WhatsApp</span>
             </a>
 
@@ -469,18 +472,18 @@ export default function UnifiedWhisperHub({
               href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${activeMode.icon} ${activePrompt}`)}&url=${encodeURIComponent(activeShareUrl)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-3 rounded-2xl bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 flex flex-col items-center justify-center gap-1 transition-all text-xs font-bold text-center"
+              className="p-3 rounded-2xl bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold text-center"
             >
-              <span className="text-lg">🐦</span>
+              <Twitter className="w-5 h-5 text-sky-500 shrink-0" />
               <span>Twitter / X</span>
             </a>
 
             <button
               type="button"
               onClick={handleNativeShare}
-              className="p-3 rounded-2xl bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex flex-col items-center justify-center gap-1 transition-all text-xs font-bold text-center cursor-pointer"
+              className="p-3 rounded-2xl bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex flex-col items-center justify-center gap-1.5 transition-all text-xs font-bold text-center cursor-pointer"
             >
-              <span className="text-lg">✨</span>
+              <Share2 className="w-5 h-5 text-purple-600 dark:text-purple-400 shrink-0" />
               <span>More Apps</span>
             </button>
           </div>

@@ -25,7 +25,8 @@ import {
   Trash2,
   Mail,
   Database,
-  AlertTriangle
+  AlertTriangle,
+  Star
 } from "lucide-react";
 import { deleteUser, GoogleAuthProvider, reauthenticateWithPopup } from "firebase/auth";
 import { collection, getDocs, doc, deleteDoc } from "firebase/firestore";
@@ -34,6 +35,7 @@ import { useAuthStore } from "../lib/store";
 import localforage from "localforage";
 import { cn } from "../lib/utils";
 import UserAvatar from "./UserAvatar";
+import { isHapticsEnabled, setHapticsEnabled, triggerHaptic } from "../lib/haptics";
 
 interface ProfileSettingsViewProps {
   user: any;
@@ -67,6 +69,7 @@ interface ProfileSettingsViewProps {
   handleSendTestNotification: () => void;
   isTestingNotif: boolean;
   notifStatusMsg: { text: string; type: "success" | "error" } | null;
+  onOpenRateModal?: () => void;
 }
 
 const THEME_OPTIONS = [
@@ -144,9 +147,21 @@ export default function ProfileSettingsView({
   handleDisablePush,
   handleSendTestNotification,
   isTestingNotif,
-  notifStatusMsg
+  notifStatusMsg,
+  onOpenRateModal
 }: ProfileSettingsViewProps) {
   const [activeCategory, setActiveCategory] = useState<"all" | "profile" | "link" | "app" | "account">("all");
+
+  // Haptic feedback preference state
+  const [hapticsOn, setHapticsOn] = useState<boolean>(() => isHapticsEnabled());
+
+  const handleToggleHaptics = (enabled: boolean) => {
+    setHapticsOn(enabled);
+    setHapticsEnabled(enabled);
+    if (enabled) {
+      triggerHaptic("medium");
+    }
+  };
 
   // Account & Data State (Integrated directly into Profile Settings view)
   const [isExporting, setIsExporting] = useState(false);
@@ -856,6 +871,44 @@ export default function ProfileSettingsView({
                   />
                   <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
                 </label>
+              </div>
+
+              {/* Haptic Feedback Vibration Toggle */}
+              <div className="flex items-center justify-between px-1 text-[11px] pt-1 border-t border-slate-100 dark:border-slate-800/60">
+                <div className="flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span className="text-slate-700 dark:text-slate-300 font-semibold">
+                    Haptic Vibration Feedback
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hapticsOn}
+                    onChange={(e) => handleToggleHaptics(e.target.checked)}
+                    className="sr-only peer"
+                    id="toggle-haptic-feedback-switch"
+                  />
+                  <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
+              {/* Rate App & Feedback Row */}
+              <div className="flex items-center justify-between px-1 text-[11px] pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                <div className="flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                  <span className="text-slate-700 dark:text-slate-300 font-semibold">
+                    Rate Whisper & Feedback
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenRateModal}
+                  className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Star className="w-3 h-3 fill-current" />
+                  <span>Rate Now</span>
+                </button>
               </div>
             </div>
           </div>

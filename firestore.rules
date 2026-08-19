@@ -198,6 +198,56 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    function isValidRating(data) {
+      return data.keys().hasAll(['rating'])
+        && data.rating is number
+        && data.rating >= 1 && data.rating <= 5
+        && (
+          !('feedback' in data) || data.feedback == null || (data.feedback is string && data.feedback.size() <= 2000)
+        )
+        && (
+          !('userId' in data) || (data.userId is string && data.userId.size() <= 128)
+        )
+        && (
+          !('username' in data) || (data.username is string && data.username.size() <= 64)
+        )
+        && (
+          !('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128)
+        )
+        && (
+          !('createdAt' in data) || (data.createdAt is timestamp)
+        )
+        && (
+          !('deviceInfo' in data) || (data.deviceInfo is string && data.deviceInfo.size() <= 500)
+        );
+    }
+
+    match /ratings/{ratingId} {
+      allow read: if true;
+      allow create: if isValidRating(incoming());
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    function isValidSystemLog(data) {
+      return data.keys().hasAll(['message', 'type', 'timestamp'])
+        && data.message is string && data.message.size() <= 4000
+        && data.type is string && data.type.size() <= 64
+        && (data.timestamp is timestamp || data.timestamp is number)
+        && (!('stack' in data) || data.stack == null || (data.stack is string && data.stack.size() <= 10000))
+        && (!('url' in data) || data.url == null || (data.url is string && data.url.size() <= 2000))
+        && (!('userAgent' in data) || data.userAgent == null || (data.userAgent is string && data.userAgent.size() <= 1000))
+        && (!('userId' in data) || data.userId == null || (data.userId is string && data.userId.size() <= 128))
+        && (!('username' in data) || data.username == null || (data.username is string && data.username.size() <= 64))
+        && (!('metadata' in data) || data.metadata == null || (data.metadata is string && data.metadata.size() <= 5000));
+    }
+
+    match /system-logs/{logId} {
+      allow read: if true;
+      allow create: if isValidId(logId) && isValidSystemLog(incoming());
+      allow update, delete: if true;
+    }
+
     match /systemSettings/{settingId} {
       allow read: if true;
       allow write: if true;

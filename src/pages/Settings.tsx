@@ -7,6 +7,7 @@ import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import ProfileSettingsView from "../components/ProfileSettingsView";
 import PauseLinkModal from "../components/PauseLinkModal";
 import IOSInstallGuideModal from "../components/IOSInstallGuideModal";
+import RateAppModal, { snoozeRatingPrompt } from "../components/RateAppModal";
 import { uploadToCloudinary } from "../lib/cloudinary";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { usePWAInstall } from "../lib/usePWAInstall";
@@ -46,6 +47,7 @@ export default function Settings() {
   const [isPushToggling, setIsPushToggling] = useState(false);
   const [isTestingNotif, setIsTestingNotif] = useState(false);
   const [notifStatusMsg, setNotifStatusMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [showRateModal, setShowRateModal] = useState(false);
 
   useEffect(() => {
     if (dbUser) {
@@ -266,6 +268,7 @@ export default function Settings() {
         handleSendTestNotification={handleSendTestNotification}
         isTestingNotif={isTestingNotif}
         notifStatusMsg={notifStatusMsg}
+        onOpenRateModal={() => setShowRateModal(true)}
       />
 
       {/* Modals */}
@@ -279,6 +282,17 @@ export default function Settings() {
       <IOSInstallGuideModal
         isOpen={showIOSModal}
         onClose={() => setShowIOSModal(false)}
+      />
+
+      <RateAppModal
+        isOpen={showRateModal}
+        onClose={() => {
+          setShowRateModal(false);
+          snoozeRatingPrompt(3);
+        }}
+        user={user}
+        dbUser={dbUser}
+        onRatedSuccess={() => setShowRateModal(false)}
       />
     </div>
   );

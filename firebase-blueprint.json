@@ -65,6 +65,38 @@
         "createdAt": { "type": "number" }
       },
       "required": ["email", "codeHash", "expiresAt", "attempts", "verified", "createdAt"]
+    },
+    "Rating": {
+      "title": "Rating",
+      "description": "User feedback and rating score for Whisper app",
+      "type": "object",
+      "properties": {
+        "rating": { "type": "number" },
+        "feedback": { "type": "string" },
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "deviceInfo": { "type": "string" }
+      },
+      "required": ["rating", "createdAt"]
+    },
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "Automated client-side runtime error and PWA diagnostic logs",
+      "type": "object",
+      "properties": {
+        "message": { "type": "string" },
+        "stack": { "type": "string" },
+        "type": { "type": "string" },
+        "url": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "metadata": { "type": "string" }
+      },
+      "required": ["message", "type", "timestamp"]
     }
   },
   "firestore": {
@@ -83,6 +115,14 @@
     "passwordResets/{resetId}": {
       "schema": { "$ref": "#/entities/PasswordReset" },
       "description": "Temporary password reset requests with hashed verification codes."
+    },
+    "ratings/{ratingId}": {
+      "schema": { "$ref": "#/entities/Rating" },
+      "description": "App rating feedback submitted by users."
+    },
+    "system-logs/{logId}": {
+      "schema": { "$ref": "#/entities/SystemLog" },
+      "description": "Client-side error logs and PWA diagnostic messages."
     }
   }
 }

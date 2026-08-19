@@ -47,7 +47,14 @@ import {
   MoreVertical,
   Mail,
   Sun,
-  Moon
+  Moon,
+  Star,
+  Trash2,
+  Heart,
+  MessageSquare,
+  Terminal,
+  Bug,
+  FileText
 } from "lucide-react";
 import { 
   collection, 
@@ -56,6 +63,7 @@ import {
   getDoc, 
   setDoc, 
   updateDoc, 
+  deleteDoc,
   serverTimestamp 
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
@@ -112,6 +120,30 @@ export interface ToastNotification {
   type: "success" | "danger" | "info" | "warning";
 }
 
+export interface RatingData {
+  id: string;
+  rating: number;
+  feedback?: string;
+  userId?: string;
+  username?: string;
+  displayName?: string;
+  createdAt?: any;
+  deviceInfo?: string;
+}
+
+export interface SystemLogRecord {
+  id: string;
+  message: string;
+  stack?: string;
+  type: string;
+  url?: string;
+  userAgent?: string;
+  userId?: string;
+  username?: string;
+  timestamp?: any;
+  metadata?: string;
+}
+
 export default function AdminDashboard() {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -130,7 +162,7 @@ export default function AdminDashboard() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Tab Navigation State
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "settings" | "updates" | "security">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "ratings" | "system-logs" | "settings" | "updates" | "security">("overview");
 
   // User Management State
   const [usersList, setUsersList] = useState<UserProfileData[]>([]);
@@ -140,6 +172,19 @@ export default function AdminDashboard() {
   const [selectedUser, setSelectedUser] = useState<UserProfileData | null>(null);
   const [copiedUid, setCopiedUid] = useState<string | null>(null);
   const [actionUserUid, setActionUserUid] = useState<string | null>(null);
+
+  // Ratings & Feedback State
+  const [ratingsList, setRatingsList] = useState<RatingData[]>([]);
+  const [isLoadingRatings, setIsLoadingRatings] = useState(false);
+  const [ratingFilter, setRatingFilter] = useState<"all" | "5star" | "4star" | "3star" | "low">("all");
+  const [ratingSearchQuery, setRatingSearchQuery] = useState("");
+
+  // Remote System Error Logs State
+  const [systemLogsList, setSystemLogsList] = useState<SystemLogRecord[]>([]);
+  const [isLoadingSystemLogs, setIsLoadingSystemLogs] = useState(false);
+  const [systemLogFilter, setSystemLogFilter] = useState<"all" | "runtime-error" | "unhandledrejection" | "react-boundary" | "pwa-error">("all");
+  const [systemLogQuery, setSystemLogQuery] = useState("");
+  const [selectedSystemLog, setSelectedSystemLog] = useState<SystemLogRecord | null>(null);
 
   // System Settings State
   const [settings, setSettings] = useState<SystemSettingsData>({
@@ -225,6 +270,151 @@ export default function AdminDashboard() {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
     setIsAuthenticated(false);
     setPasskeyInput("");
+  };
+
+  // Fetch Ratings
+  const fetchRatings = async () => {
+    setIsLoadingRatings(true);
+    try {
+      const snap = await getDocs(collection(db, "ratings"));
+      const list: RatingData[] = [];
+      snap.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as RatingData);
+      });
+      list.sort((a, b) => {
+        const tA = a.createdAt?.seconds || 0;
+        const tB = b.createdAt?.seconds || 0;
+        return tB - tA;
+      });
+      setRatingsList(list);
+      addLog("Ratings Sync", `Retrieved ${list.length} rating & feedback record(s)`, "info");
+    } catch (err: any) {
+      console.error("Failed to fetch ratings:", err);
+      addLog("Fetch Ratings Failure", err?.message || "Error reading ratings collection", "danger");
+      showToast("Sync Error", "Could not fetch ratings from Firestore", "danger");
+    } finally {
+      setIsLoadingRatings(false);
+    }
+  };
+
+  const handleDeleteRating = async (ratingId: string) => {
+    if (!window.confirm("Are you sure you want to delete this user rating?")) return;
+    try {
+      await deleteDoc(doc(db, "ratings", ratingId));
+      setRatingsList(prev => prev.filter(r => r.id !== ratingId));
+      showToast("Rating Deleted", "Feedback entry removed successfully.", "info");
+      addLog("Delete Rating", `Deleted rating record ${ratingId}`, "info");
+    } catch (err: any) {
+      showToast("Delete Failed", err?.message || "Could not delete rating document.", "danger");
+    }
+  };
+
+  const handleExportRatings = () => {
+    if (ratingsList.length === 0) return;
+    const headers = ["ID", "Rating", "Username", "Display Name", "Feedback", "Device Info", "Date"];
+    const rows = ratingsList.map(r => [
+      r.id,
+      r.rating,
+      r.username || "Anonymous",
+      r.displayName || "",
+      (r.feedback || "").replace(/"/g, '""'),
+      r.deviceInfo || "",
+      r.createdAt?.seconds ? new Date(r.createdAt.seconds * 1000).toISOString() : ""
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `whisper_ratings_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showToast("Export Complete", `Exported ${ratingsList.length} rating records to CSV`, "success");
+  };
+
+  // Fetch Remote System Error Logs
+  const fetchSystemLogs = async () => {
+    setIsLoadingSystemLogs(true);
+    try {
+      const snap = await getDocs(collection(db, "system-logs"));
+      const list: SystemLogRecord[] = [];
+      snap.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as SystemLogRecord);
+      });
+      list.sort((a, b) => {
+        const tA = a.timestamp?.seconds ? a.timestamp.seconds * 1000 : (typeof a.timestamp === "number" ? a.timestamp : 0);
+        const tB = b.timestamp?.seconds ? b.timestamp.seconds * 1000 : (typeof b.timestamp === "number" ? b.timestamp : 0);
+        return tB - tA;
+      });
+      setSystemLogsList(list);
+      addLog("System Logs Sync", `Retrieved ${list.length} remote client error log(s)`, "info");
+    } catch (err: any) {
+      console.error("Failed to fetch system logs:", err);
+      addLog("Fetch System Logs Failure", err?.message || "Error reading system-logs collection", "danger");
+      showToast("Sync Error", "Could not fetch system error logs from Firestore", "danger");
+    } finally {
+      setIsLoadingSystemLogs(false);
+    }
+  };
+
+  const handleDeleteSystemLog = async (logId: string) => {
+    if (!window.confirm("Are you sure you want to delete this system error record?")) return;
+    try {
+      await deleteDoc(doc(db, "system-logs", logId));
+      setSystemLogsList(prev => prev.filter(l => l.id !== logId));
+      if (selectedSystemLog?.id === logId) setSelectedSystemLog(null);
+      showToast("Log Record Removed", "Error log deleted from Firestore.", "info");
+      addLog("Delete Error Log", `Deleted system log ${logId}`, "info");
+    } catch (err: any) {
+      showToast("Delete Failed", err?.message || "Could not delete log document.", "danger");
+    }
+  };
+
+  const handleExportSystemLogs = () => {
+    if (systemLogsList.length === 0) return;
+    const headers = ["ID", "Type", "Error Message", "User ID", "Username", "URL", "User Agent", "Timestamp"];
+    const rows = systemLogsList.map(l => [
+      l.id,
+      l.type,
+      (l.message || "").replace(/"/g, '""'),
+      l.userId || "",
+      l.username || "",
+      l.url || "",
+      (l.userAgent || "").replace(/"/g, '""'),
+      l.timestamp?.seconds ? new Date(l.timestamp.seconds * 1000).toISOString() : ""
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `whisper_system_logs_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showToast("Export Complete", `Exported ${systemLogsList.length} system log records to CSV`, "success");
+  };
+
+  const handleClearAllSystemLogs = async () => {
+    if (systemLogsList.length === 0) return;
+    if (!window.confirm(`Are you sure you want to purge ALL ${systemLogsList.length} system error log records?`)) return;
+    try {
+      const promises = systemLogsList.map(l => deleteDoc(doc(db, "system-logs", l.id)));
+      await Promise.all(promises);
+      setSystemLogsList([]);
+      setSelectedSystemLog(null);
+      showToast("Logs Purged", "All remote client error logs cleared.", "success");
+      addLog("Purge System Logs", "Cleared system-logs collection in Firestore", "warning");
+    } catch (err: any) {
+      showToast("Purge Failed", err?.message || "Error purging system logs", "danger");
+    }
   };
 
   // Fetch Users
@@ -453,9 +643,33 @@ export default function AdminDashboard() {
     if (isAuthenticated) {
       fetchUsers();
       fetchSettings();
+      fetchRatings();
+      fetchSystemLogs();
       runLatencyTest();
     }
   }, [isAuthenticated]);
+
+  // Filtered System Error Logs
+  const filteredSystemLogs = systemLogsList.filter(l => {
+    const q = systemLogQuery.toLowerCase().trim();
+    const matchesQuery = 
+      !q ||
+      l.message?.toLowerCase().includes(q) ||
+      l.type?.toLowerCase().includes(q) ||
+      l.url?.toLowerCase().includes(q) ||
+      l.username?.toLowerCase().includes(q) ||
+      l.userId?.toLowerCase().includes(q) ||
+      l.id?.toLowerCase().includes(q) ||
+      (l.stack && l.stack.toLowerCase().includes(q));
+
+    if (!matchesQuery) return false;
+
+    if (systemLogFilter === "runtime-error") return l.type === "runtime-error";
+    if (systemLogFilter === "unhandledrejection") return l.type === "unhandledrejection";
+    if (systemLogFilter === "react-boundary") return l.type === "react-boundary";
+    if (systemLogFilter === "pwa-error") return l.type === "pwa-error";
+    return true;
+  });
 
   // Filtered Users
   const filteredUsers = usersList.filter(u => {
@@ -475,11 +689,41 @@ export default function AdminDashboard() {
     return true;
   });
 
+  // Filtered Ratings
+  const filteredRatings = ratingsList.filter(r => {
+    const queryLower = ratingSearchQuery.toLowerCase().trim();
+    const matchesSearch = 
+      !queryLower ||
+      r.username?.toLowerCase().includes(queryLower) ||
+      r.displayName?.toLowerCase().includes(queryLower) ||
+      r.feedback?.toLowerCase().includes(queryLower) ||
+      r.deviceInfo?.toLowerCase().includes(queryLower);
+
+    if (!matchesSearch) return false;
+
+    if (ratingFilter === "5star") return r.rating === 5;
+    if (ratingFilter === "4star") return r.rating === 4;
+    if (ratingFilter === "3star") return r.rating === 3;
+    if (ratingFilter === "low") return r.rating <= 2;
+    return true;
+  });
+
   // Stats
   const totalUsersCount = usersList.length;
   const onboardedCount = usersList.filter(u => u.onboardingCompleted).length;
   const usersWithEmailCount = usersList.filter(u => u.email).length;
   const lockedUsersCount = usersList.filter(u => u.isLocked).length;
+
+  // Rating Metrics
+  const avgRatingScore = ratingsList.length > 0 
+    ? (ratingsList.reduce((acc, curr) => acc + (curr.rating || 0), 0) / ratingsList.length).toFixed(1)
+    : "0.0";
+  const count5Star = ratingsList.filter(r => r.rating === 5).length;
+  const count4Star = ratingsList.filter(r => r.rating === 4).length;
+  const count3Star = ratingsList.filter(r => r.rating === 3).length;
+  const count2Star = ratingsList.filter(r => r.rating === 2).length;
+  const count1Star = ratingsList.filter(r => r.rating === 1).length;
+  const feedbackTextCount = ratingsList.filter(r => r.feedback && r.feedback.trim().length > 0).length;
 
   // Passkey Login View (Light/Dark Clean Theme)
   if (!isAuthenticated) {
@@ -593,6 +837,8 @@ export default function AdminDashboard() {
   const navigationItems = [
     { id: "overview", label: "Dashboard Overview", icon: BarChart3, badge: null },
     { id: "users", label: "User Directory", icon: Users, badge: totalUsersCount },
+    { id: "ratings", label: "Ratings & Feedback", icon: Star, badge: ratingsList.length },
+    { id: "system-logs", label: "System Error Logs", icon: Bug, badge: systemLogsList.length > 0 ? systemLogsList.length : null },
     { id: "settings", label: "System Controls", icon: Sliders, badge: settings.maintenanceMode ? "MAINT" : null },
     { id: "updates", label: "Platform & Builds", icon: Cpu, badge: currentVersion },
     { id: "security", label: "Audit & Event Logs", icon: Shield, badge: logs.length },
@@ -841,6 +1087,7 @@ export default function AdminDashboard() {
               <span className="font-bold capitalize text-slate-900 dark:text-white">
                 {activeTab === "overview" && "Dashboard Overview"}
                 {activeTab === "users" && "User Directory & Account Locks"}
+                {activeTab === "ratings" && "Ratings, Feedback & User Satisfaction"}
                 {activeTab === "settings" && "System Controls & Maintenance"}
                 {activeTab === "updates" && "Platform, PWA & Builds"}
                 {activeTab === "security" && "Audit Logs & Security"}
@@ -909,6 +1156,7 @@ export default function AdminDashboard() {
               onClick={() => {
                 fetchUsers();
                 fetchSettings();
+                fetchRatings();
                 runLatencyTest();
                 showToast("Refreshed", "Dashboard data synchronized", "info");
               }}
@@ -1260,6 +1508,454 @@ export default function AdminDashboard() {
 
                           </tr>
                         ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+            </motion.div>
+          )}
+
+          {/* TAB: RATINGS & FEEDBACK */}
+          {activeTab === "ratings" && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              
+              {/* Ratings KPI Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                <div className={`p-5 rounded-3xl border ${cardClasses}`}>
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-3">
+                    <span>Average Rating Score</span>
+                    <div className="w-9 h-9 rounded-2xl bg-amber-50 dark:bg-amber-500/10 text-amber-500 flex items-center justify-center border border-amber-200 dark:border-amber-500/20">
+                      <Star className="w-4 h-4 fill-current" />
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-slate-900 dark:text-white">{avgRatingScore}</span>
+                    <span className="text-xs font-bold text-slate-400">/ 5.0</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <Star 
+                        key={s} 
+                        className={`w-3.5 h-3.5 ${
+                          s <= Math.round(Number(avgRatingScore)) 
+                            ? "fill-amber-400 text-amber-400" 
+                            : "text-slate-300 dark:text-slate-700"
+                        }`} 
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className={`p-5 rounded-3xl border ${cardClasses}`}>
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-3">
+                    <span>Total Rating Responses</span>
+                    <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-100 dark:border-indigo-500/20">
+                      <Users className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-black text-slate-900 dark:text-white">{ratingsList.length}</div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    User ratings recorded in Firestore
+                  </div>
+                </div>
+
+                <div className={`p-5 rounded-3xl border ${cardClasses}`}>
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-3">
+                    <span>5-Star Loved Ratings</span>
+                    <div className="w-9 h-9 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-500/20">
+                      <Heart className="w-4 h-4 fill-current" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-black text-slate-900 dark:text-white">{count5Star}</div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    {ratingsList.length > 0 ? `${Math.round((count5Star / ratingsList.length) * 100)}% 5-star score` : "0%"}
+                  </div>
+                </div>
+
+                <div className={`p-5 rounded-3xl border ${cardClasses}`}>
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-3">
+                    <span>Written Comments</span>
+                    <div className="w-9 h-9 rounded-2xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-100 dark:border-purple-500/20">
+                      <MessageSquare className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className="text-3xl font-black text-slate-900 dark:text-white">{feedbackTextCount}</div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    Detailed user feedback entries
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Star Rating Breakdown Bar */}
+              <div className={`p-6 rounded-3xl border ${cardClasses}`}>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-400 fill-current" />
+                  <span>Rating Breakdown Distribution</span>
+                </h3>
+
+                <div className="space-y-2.5 text-xs">
+                  {[
+                    { stars: 5, count: count5Star, color: "bg-amber-400" },
+                    { stars: 4, count: count4Star, color: "bg-indigo-500" },
+                    { stars: 3, count: count3Star, color: "bg-purple-500" },
+                    { stars: 2, count: count2Star, color: "bg-rose-400" },
+                    { stars: 1, count: count1Star, color: "bg-rose-600" },
+                  ].map((row) => {
+                    const pct = ratingsList.length > 0 ? Math.round((row.count / ratingsList.length) * 100) : 0;
+                    return (
+                      <div key={row.stars} className="flex items-center gap-3">
+                        <span className="w-16 font-bold flex items-center gap-1 text-slate-600 dark:text-slate-300">
+                          <span>{row.stars}</span>
+                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                        </span>
+                        <div className="flex-1 h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full ${row.color} transition-all duration-500`} 
+                            style={{ width: `${pct}%` }} 
+                          />
+                        </div>
+                        <span className="w-16 text-right font-mono text-slate-500">
+                          {row.count} ({pct}%)
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Search, Filter & Export */}
+              <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-center justify-between gap-4 ${cardClasses}`}>
+                
+                <div className="relative w-full sm:w-80">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={ratingSearchQuery}
+                    onChange={(e) => setRatingSearchQuery(e.target.value)}
+                    placeholder="Search feedback comment, handle, device..."
+                    className={`w-full pl-10 pr-4 py-2 border focus:border-indigo-600 rounded-2xl text-xs outline-none transition-all ${
+                      isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                    }`}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                  {[
+                    { id: "all", label: `All (${ratingsList.length})` },
+                    { id: "5star", label: `5 Stars (${count5Star})` },
+                    { id: "4star", label: `4 Stars (${count4Star})` },
+                    { id: "3star", label: `3 Stars (${count3Star})` },
+                    { id: "low", label: `Low Ratings (${count2Star + count1Star})` },
+                  ].map(filter => (
+                    <button
+                      key={filter.id}
+                      onClick={() => setRatingFilter(filter.id as any)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                        ratingFilter === filter.id
+                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                          : "bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+
+                  <button
+                    onClick={handleExportRatings}
+                    disabled={ratingsList.length === 0}
+                    className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0 hover:bg-indigo-100 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Export CSV
+                  </button>
+                </div>
+
+              </div>
+
+              {/* Ratings List Table */}
+              <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
+                {isLoadingRatings ? (
+                  <div className="p-12 text-center text-slate-400 space-y-3">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
+                    <p className="text-xs">Fetching ratings & feedback from Firestore...</p>
+                  </div>
+                ) : filteredRatings.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400 space-y-2">
+                    <Star className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No ratings match your filter</p>
+                    <p className="text-xs text-slate-400">Users will see rating prompts as they interact with Whisper.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 font-semibold">
+                          <th className="p-4">User</th>
+                          <th className="p-4">Rating</th>
+                          <th className="p-4">Feedback Comment</th>
+                          <th className="p-4">Device</th>
+                          <th className="p-4">Submitted At</th>
+                          <th className="p-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                        {filteredRatings.map((ratingDoc) => (
+                          <tr key={ratingDoc.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="p-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center text-xs border border-indigo-500/20">
+                                  {ratingDoc.username?.[0]?.toUpperCase() || "A"}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-900 dark:text-white">
+                                    @{ratingDoc.username || "Anonymous"}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400">
+                                    {ratingDoc.displayName || "Whisper User"}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="p-4">
+                              <div className="flex items-center gap-1">
+                                {[1, 2, 3, 4, 5].map(s => (
+                                  <Star 
+                                    key={s} 
+                                    className={`w-3.5 h-3.5 ${
+                                      s <= ratingDoc.rating 
+                                        ? "fill-amber-400 text-amber-400" 
+                                        : "text-slate-300 dark:text-slate-700"
+                                    }`} 
+                                  />
+                                ))}
+                                <span className="ml-1 font-bold text-slate-700 dark:text-slate-300">{ratingDoc.rating}/5</span>
+                              </div>
+                            </td>
+
+                            <td className="p-4 max-w-xs">
+                              {ratingDoc.feedback ? (
+                                <p className="text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 italic text-[11px] leading-relaxed">
+                                  "{ratingDoc.feedback}"
+                                </p>
+                              ) : (
+                                <span className="text-slate-400 italic text-[11px]">No written feedback</span>
+                              )}
+                            </td>
+
+                            <td className="p-4 text-slate-500 dark:text-slate-400 text-[11px]">
+                              {ratingDoc.deviceInfo || "Web App"}
+                            </td>
+
+                            <td className="p-4 text-slate-400 text-[11px]">
+                              {ratingDoc.createdAt?.seconds 
+                                ? new Date(ratingDoc.createdAt.seconds * 1000).toLocaleString()
+                                : "Just now"
+                              }
+                            </td>
+
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => handleDeleteRating(ratingDoc.id)}
+                                className="p-1.5 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 text-rose-600 dark:text-rose-400 rounded-xl transition-colors"
+                                title="Delete rating entry"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+            </motion.div>
+          )}
+
+          {/* TAB: SYSTEM ERROR LOGS */}
+          {activeTab === "system-logs" && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              
+              {/* Header & Controls */}
+              <div className={`p-4 rounded-3xl border flex flex-col md:flex-row items-center justify-between gap-4 ${cardClasses}`}>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center border border-rose-500/20 shrink-0">
+                    <Bug className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>Remote System Error Logs</span>
+                      <span className="px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-[10px] font-mono font-bold">
+                        {systemLogsList.length} captured
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-400">Automated client-side runtime errors and PWA diagnostics sent to Firestore</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                  <button
+                    onClick={fetchSystemLogs}
+                    disabled={isLoadingSystemLogs}
+                    className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Refresh logs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSystemLogs ? "animate-spin" : ""}`} />
+                    <span>Refresh</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportSystemLogs}
+                    disabled={systemLogsList.length === 0}
+                    className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export CSV</span>
+                  </button>
+
+                  <button
+                    onClick={handleClearAllSystemLogs}
+                    disabled={systemLogsList.length === 0}
+                    className="px-3 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Purge All</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filters & Search */}
+              <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-center justify-between gap-4 ${cardClasses}`}>
+                <div className="relative w-full sm:w-80">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={systemLogQuery}
+                    onChange={(e) => setSystemLogQuery(e.target.value)}
+                    placeholder="Search error message, stack, URL, UID..."
+                    className={`w-full pl-10 pr-4 py-2 border focus:border-indigo-600 rounded-2xl text-xs outline-none transition-all ${
+                      isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                    }`}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                  {[
+                    { id: "all", label: `All (${systemLogsList.length})` },
+                    { id: "runtime-error", label: `Runtime (${systemLogsList.filter(l => l.type === "runtime-error").length})` },
+                    { id: "unhandledrejection", label: `Rejections (${systemLogsList.filter(l => l.type === "unhandledrejection").length})` },
+                    { id: "react-boundary", label: `React Boundary (${systemLogsList.filter(l => l.type === "react-boundary").length})` },
+                    { id: "pwa-error", label: `PWA/Worker (${systemLogsList.filter(l => l.type === "pwa-error").length})` },
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => setSystemLogFilter(f.id as any)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                        systemLogFilter === f.id
+                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                          : "bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* System Logs Table */}
+              <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
+                {isLoadingSystemLogs ? (
+                  <div className="p-12 text-center text-slate-400 space-y-3">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
+                    <p className="text-xs">Reading system logs from Firestore...</p>
+                  </div>
+                ) : filteredSystemLogs.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400 space-y-2">
+                    <Bug className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No system error logs found</p>
+                    <p className="text-xs text-slate-400">Client-side runtime errors and rejections will automatically be logged here.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 font-semibold">
+                          <th className="p-4">Log ID & Type</th>
+                          <th className="p-4">Error Message</th>
+                          <th className="p-4">Trigger User</th>
+                          <th className="p-4">URL Origin</th>
+                          <th className="p-4">Logged At</th>
+                          <th className="p-4 text-right">Inspect & Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                        {filteredSystemLogs.map((logItem) => {
+                          let typeBadgeColor = "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300";
+                          if (logItem.type === "runtime-error") typeBadgeColor = "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800";
+                          if (logItem.type === "unhandledrejection") typeBadgeColor = "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800";
+                          if (logItem.type === "react-boundary") typeBadgeColor = "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200/80 dark:border-purple-800";
+                          if (logItem.type === "pwa-error") typeBadgeColor = "bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200/80 dark:border-sky-800";
+
+                          return (
+                            <tr key={logItem.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                              <td className="p-4">
+                                <div className="space-y-1">
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono inline-block ${typeBadgeColor}`}>
+                                    {logItem.type}
+                                  </span>
+                                  <div className="font-mono text-[10px] text-slate-400 truncate max-w-[120px]" title={logItem.id}>
+                                    {logItem.id}
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="p-4 max-w-xs">
+                                <p className="font-semibold text-slate-900 dark:text-white line-clamp-2 break-all text-[11px]">
+                                  {logItem.message}
+                                </p>
+                              </td>
+
+                              <td className="p-4 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+                                <div>@{logItem.username || "anonymous"}</div>
+                                <div className="text-[10px] text-slate-400 truncate max-w-[100px]">{logItem.userId || "N/A"}</div>
+                              </td>
+
+                              <td className="p-4 text-slate-500 text-[11px] max-w-[160px] truncate" title={logItem.url}>
+                                {logItem.url ? logItem.url.replace(/^https?:\/\/[^\/]+/, '') : "N/A"}
+                              </td>
+
+                              <td className="p-4 text-slate-400 text-[11px] whitespace-nowrap">
+                                {logItem.timestamp?.seconds
+                                  ? new Date(logItem.timestamp.seconds * 1000).toLocaleString()
+                                  : "Just now"}
+                              </td>
+
+                              <td className="p-4 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => setSelectedSystemLog(logItem)}
+                                    className="px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Terminal className="w-3.5 h-3.5" /> Inspect
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleDeleteSystemLog(logItem.id)}
+                                    className="p-1.5 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 text-rose-600 dark:text-rose-400 rounded-xl transition-colors cursor-pointer"
+                                    title="Delete error log record"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1772,6 +2468,122 @@ export default function AdminDashboard() {
                 <button
                   onClick={() => setSelectedUser(null)}
                   className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold rounded-2xl text-xs"
+                >
+                  Close Inspector
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* System Log Details Inspector Modal */}
+      <AnimatePresence>
+        {selectedSystemLog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedSystemLog(null)}
+              className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 1, y: 0 }}
+              className={`w-full max-w-2xl max-h-[85vh] p-6 rounded-3xl border shadow-2xl relative z-10 overflow-y-auto space-y-4 ${
+                isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
+              }`}
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center border border-rose-500/20">
+                    <Bug className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>Error Log Inspector</span>
+                      <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-mono">
+                        {selectedSystemLog.type}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 font-mono">ID: {selectedSystemLog.id}</p>
+                  </div>
+                </div>
+
+                <button onClick={() => setSelectedSystemLog(null)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Error Message */}
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 rounded-2xl space-y-1">
+                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider block">Error Message</span>
+                <p className="text-xs font-semibold text-rose-900 dark:text-rose-200 break-words">{selectedSystemLog.message}</p>
+              </div>
+
+              {/* Stack Trace Box */}
+              {selectedSystemLog.stack && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stack Trace</span>
+                    <button
+                      onClick={() => handleCopy(selectedSystemLog.stack || "", "stack-trace")}
+                      className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedUid === "stack-trace" ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                      <span>Copy Stack</span>
+                    </button>
+                  </div>
+                  <pre className="p-3.5 bg-slate-950 text-slate-200 border border-slate-800 rounded-2xl text-[11px] font-mono overflow-x-auto max-h-60 leading-relaxed whitespace-pre-wrap break-all">
+                    {selectedSystemLog.stack}
+                  </pre>
+                </div>
+              )}
+
+              {/* Metadata Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1">
+                  <span className="text-slate-400 text-[10px] block">Page URL</span>
+                  <div className="text-slate-900 dark:text-slate-200 font-mono text-[11px] break-all">{selectedSystemLog.url || "N/A"}</div>
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1">
+                  <span className="text-slate-400 text-[10px] block">User Context</span>
+                  <div className="text-slate-900 dark:text-slate-200 font-semibold text-[11px]">
+                    @{selectedSystemLog.username || "anonymous"} ({selectedSystemLog.userId || "anon"})
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1 sm:col-span-2">
+                  <span className="text-slate-400 text-[10px] block">User Agent (Client Device / Browser)</span>
+                  <div className="text-slate-600 dark:text-slate-400 font-mono text-[10px] break-all">{selectedSystemLog.userAgent || "N/A"}</div>
+                </div>
+
+                {selectedSystemLog.metadata && (
+                  <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-1 sm:col-span-2 font-mono">
+                    <span className="text-slate-400 text-[10px] block">Additional Metadata</span>
+                    <pre className="text-slate-700 dark:text-slate-300 text-[10px] whitespace-pre-wrap break-all">
+                      {selectedSystemLog.metadata}
+                    </pre>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 flex items-center justify-between border-t border-slate-100 dark:border-slate-800">
+                <button
+                  onClick={() => handleDeleteSystemLog(selectedSystemLog.id)}
+                  className="px-3.5 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 font-bold rounded-2xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Error Record</span>
+                </button>
+
+                <button
+                  onClick={() => setSelectedSystemLog(null)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold rounded-2xl text-xs cursor-pointer"
                 >
                   Close Inspector
                 </button>

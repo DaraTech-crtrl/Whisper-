@@ -53,7 +53,9 @@ import {
   Sparkles,
   Share,
   PlusSquare,
-  RefreshCw
+  RefreshCw,
+  ChevronRight,
+  MessageSquare
 } from "lucide-react";
 import UserAvatar from "../components/UserAvatar";
 import { uploadToCloudinary } from "../lib/cloudinary";
@@ -70,6 +72,7 @@ import IOSInstallGuideModal from "../components/IOSInstallGuideModal";
 import PauseLinkModal from "../components/PauseLinkModal";
 import AccountSettingsModal from "../components/AccountSettingsModal";
 import ProfileSettingsView from "../components/ProfileSettingsView";
+import RateAppModal, { shouldShowRatingPrompt, snoozeRatingPrompt } from "../components/RateAppModal";
 import WhisperCarousel from "../components/WhisperCarousel";
 import { WhisperMode, WHISPER_MODES, getModeUrl, getMessageMode } from "../lib/whisperModes";
 import localforage from "localforage";
@@ -234,6 +237,19 @@ export default function Dashboard() {
   const [showIOSModal, setShowIOSModal] = useState(false);
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [showAccountSettingsModal, setShowAccountSettingsModal] = useState(false);
+  const [showRateModal, setShowRateModal] = useState(false);
+
+  // Auto-spawn Rating Prompt after 12 seconds time spawn delay if eligible
+  useEffect(() => {
+    if (dbUser && shouldShowRatingPrompt(dbUser)) {
+      const timer = setTimeout(() => {
+        if (shouldShowRatingPrompt(dbUser)) {
+          setShowRateModal(true);
+        }
+      }, 12000); // 12s delay allows user to inspect dashboard before prompting
+      return () => clearTimeout(timer);
+    }
+  }, [dbUser]);
 
   // Firebase Cloud Messaging & Push Notification state
   const [notifPermission, setNotifPermission] = useState<NotificationPermissionState>(getNotificationPermissionStatus());
@@ -797,7 +813,7 @@ export default function Dashboard() {
   };
 
   const handleMessageClick = (msg: Message) => {
-    setSelectedMessage(msg);
+    setSelectedMessage({ ...msg, read: true });
     markRead(msg.id, msg.read);
   };
 
@@ -1457,6 +1473,85 @@ export default function Dashboard() {
                 const msgTags = msg.tags || [];
                 const msgMode = getMessageMode(msg);
 
+                // Full Unread Message Card: sleek, unique anonymous row layout matching website light/dark theme
+                if (!msg.read) {
+                  return (
+                    <motion.div
+                      key={msg.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.97 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className={cn(
+                        "p-4 rounded-3xl border transition-all cursor-pointer group relative overflow-hidden shadow-xs hover:shadow-md",
+                        isSelected 
+                          ? "bg-indigo-50/90 dark:bg-indigo-950/70 border-indigo-500 ring-2 ring-indigo-500/30"
+                          : `${msgMode.msgUnreadBg} ${msgMode.msgBorder}`
+                      )}
+                      onClick={() => handleMessageClick(msg)}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                          {/* Multi-select Checkbox */}
+                          <button
+                            type="button"
+                            onClick={(e) => toggleSelectMessage(msg.id, e)}
+                            className={cn(
+                              "w-5 h-5 rounded-lg flex items-center justify-center transition-all border shrink-0",
+                              isSelected
+                                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                : "bg-white/80 dark:bg-slate-800 text-transparent border-slate-300 dark:border-slate-700 hover:border-indigo-400"
+                            )}
+                            title={isSelected ? "Deselect" : "Select"}
+                          >
+                            <CheckSquare className={cn("w-3.5 h-3.5", isSelected ? "text-white" : "opacity-0")} />
+                          </button>
+
+                          {/* Avatar / Glowing Icon using Mode Gradient */}
+                          <div className="relative shrink-0">
+                            <div className={cn("w-11 h-11 rounded-2xl bg-gradient-to-tr flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform", msgMode.gradient)}>
+                              <span className="text-xl">{msgMode.icon || "📩"}</span>
+                            </div>
+                            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse" />
+                          </div>
+
+                          {/* Title & Subtext */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-base font-extrabold text-slate-900 dark:text-white tracking-tight group-hover:text-indigo-600 dark:group-hover:text-pink-300 transition-colors">
+                                New Message!
+                              </h3>
+                              <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-2xs", msgMode.msgBadgeBg)}>
+                                <span>{msgMode.name}</span>
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium flex items-center gap-2">
+                              <span>{msg.createdAt?.seconds ? formatDistanceToNow(new Date(msg.createdAt.seconds * 1000), { addSuffix: true }) : "Just now"}</span>
+                              <span className="inline-block w-1 h-1 rounded-full bg-slate-400 dark:bg-slate-600" />
+                              <span className="text-indigo-600 dark:text-pink-400 font-semibold group-hover:underline">Tap to open</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Right Actions & Chevron */}
+                        <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={(e) => deleteMsg(msg.id, e)}
+                            className="text-slate-400 hover:text-rose-500 dark:text-slate-500 dark:hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Delete Message"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+
+                          <div className="w-8 h-8 rounded-full bg-white/80 dark:bg-slate-800 group-hover:bg-indigo-600 dark:group-hover:bg-pink-500 group-hover:text-white text-slate-500 dark:text-slate-400 flex items-center justify-center transition-all group-hover:translate-x-1 shadow-2xs">
+                            <ChevronRight className="w-4 h-4" />
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                }
+
                 return (
                   <motion.div
                     key={msg.id}
@@ -1626,7 +1721,7 @@ export default function Dashboard() {
                     </div>
                     
                     {/* Message Body Content */}
-                    <div className={cn("text-base sm:text-lg font-medium break-words whitespace-pre-wrap font-sans mb-3 flex-1", !msg.read && "text-indigo-950 dark:text-indigo-100 font-semibold")}>
+                    <div className={cn("text-base sm:text-lg font-medium break-words line-clamp-2 font-sans mb-3 flex-1")}>
                       {(() => {
                         const isLocked = msg.unlocksAt && (msg.unlocksAt.seconds * 1000 > Date.now());
                         if (isLocked) {
@@ -1643,8 +1738,9 @@ export default function Dashboard() {
                           return <span className="animate-pulse text-slate-400">Decrypting...</span>;
                         }
 
-                        const decrypted = decryptedCache[msg.id];
-                        return <>{msg.mood && <span className="mr-2 text-xl">{msg.mood}</span>}{decrypted}</>;
+                        const decrypted = decryptedCache[msg.id] || "";
+                        const flattenedText = decrypted.replace(/[\r\n]+/g, " ").trim();
+                        return <>{msg.mood && <span className="mr-2 text-xl">{msg.mood}</span>}{flattenedText}</>;
                       })()}
                     </div>
 
@@ -2048,6 +2144,18 @@ export default function Dashboard() {
         user={user}
         dbUser={dbUser}
         messagesCount={messages.length}
+      />
+
+      {/* Rate App & Feedback Modal */}
+      <RateAppModal
+        isOpen={showRateModal}
+        onClose={() => {
+          setShowRateModal(false);
+          snoozeRatingPrompt(3); // Snooze for 3 days if dismissed without rating
+        }}
+        user={user}
+        dbUser={dbUser}
+        onRatedSuccess={() => setShowRateModal(false)}
       />
     </div>
   );

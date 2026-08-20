@@ -27,12 +27,13 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="format-detection" content="telephone=no" />
 
-    <!-- Synchronous PWA & iOS Safari Route Sync before rendering -->
+    <!-- Synchronous PWA & iOS Safari Route Sync and Splash Setup before rendering -->
     <script>
       (function() {
         try {
           var p = window.location.pathname || '';
-          if (p.indexOf('/admin') === 0) {
+          var isAdmin = p.indexOf('/admin') === 0;
+          if (isAdmin) {
             var m = document.getElementById('app-manifest-link');
             if (m) m.href = '/manifest-admin.json';
             var t = document.querySelector('meta[name="apple-mobile-web-app-title"]');
@@ -42,6 +43,216 @@
         } catch (e) {}
       })();
     </script>
+
+    <!-- Pre-mount Startup Splash Styles (Instant 0ms render before JS execution) -->
+    <style>
+      :root {
+        --splash-bg: #f8fafc;
+        --splash-card-bg: #ffffff;
+        --splash-card-border: rgba(226, 232, 240, 0.9);
+        --splash-card-shadow: 0 20px 25px -5px rgba(99, 102, 241, 0.12), 0 8px 10px -6px rgba(99, 102, 241, 0.08);
+        --splash-title: #0f172a;
+        --splash-sub: #64748b;
+        --splash-glow: rgba(99, 102, 241, 0.16);
+        --splash-bar-bg: #e2e8f0;
+        --splash-bar-fill: linear-gradient(90deg, #6366f1, #a855f7, #6366f1);
+        --splash-badge-bg: rgba(99, 102, 241, 0.08);
+        --splash-badge-text: #4f46e5;
+        --splash-badge-border: rgba(99, 102, 241, 0.2);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --splash-bg: #090d16;
+          --splash-card-bg: #0f172a;
+          --splash-card-border: rgba(255, 255, 255, 0.08);
+          --splash-card-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+          --splash-title: #f8fafc;
+          --splash-sub: #94a3b8;
+          --splash-glow: rgba(99, 102, 241, 0.28);
+          --splash-bar-bg: #1e293b;
+          --splash-bar-fill: linear-gradient(90deg, #818cf8, #c084fc, #818cf8);
+          --splash-badge-bg: rgba(99, 102, 241, 0.15);
+          --splash-badge-text: #a5b4fc;
+          --splash-badge-border: rgba(99, 102, 241, 0.3);
+        }
+      }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background-color: var(--splash-bg);
+      }
+
+      #app-startup-splash {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100dvh;
+        min-height: 100vh;
+        background-color: var(--splash-bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+        z-index: 99999;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      .splash-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        position: relative;
+        max-width: 320px;
+        width: 100%;
+      }
+
+      .splash-glow-aura {
+        position: absolute;
+        top: -15px;
+        width: 170px;
+        height: 170px;
+        background: radial-gradient(circle, var(--splash-glow) 0%, transparent 70%);
+        border-radius: 50%;
+        filter: blur(20px);
+        pointer-events: none;
+        animation: splashPulse 3s ease-in-out infinite;
+      }
+
+      .splash-logo-box {
+        position: relative;
+        width: 82px;
+        height: 82px;
+        background: var(--splash-card-bg);
+        border: 2px solid var(--splash-card-border);
+        border-radius: 26px;
+        box-shadow: var(--splash-card-shadow);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 7px;
+        margin-bottom: 20px;
+        animation: splashScaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .splash-logo-img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        border-radius: 19px;
+      }
+
+      .splash-brand-title {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: var(--splash-title);
+        line-height: 1.2;
+        animation: splashFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+      }
+
+      .splash-brand-subtitle {
+        margin: 6px 0 0 0;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--splash-sub);
+        line-height: 1.4;
+        animation: splashFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+      }
+
+      .splash-badge {
+        margin-top: 14px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        background: var(--splash-badge-bg);
+        color: var(--splash-badge-text);
+        border: 1px solid var(--splash-badge-border);
+        border-radius: 9999px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        animation: splashFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
+      }
+
+      .splash-progress-track {
+        margin-top: 26px;
+        width: 130px;
+        height: 4px;
+        background: var(--splash-bar-bg);
+        border-radius: 9999px;
+        overflow: hidden;
+        position: relative;
+        animation: splashFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+      }
+
+      .splash-progress-indicator {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 60%;
+        background: var(--splash-bar-fill);
+        border-radius: 9999px;
+        animation: splashProgress 1.4s ease-in-out infinite;
+      }
+
+      .splash-dots {
+        display: flex;
+        gap: 6px;
+        margin-top: 14px;
+        animation: splashFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+      }
+
+      .splash-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #6366f1;
+        animation: splashBounce 1.2s ease-in-out infinite;
+      }
+
+      .splash-dot:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+      .splash-dot:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+
+      @keyframes splashScaleIn {
+        0% { transform: scale(0.85); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+
+      @keyframes splashFadeUp {
+        0% { transform: translateY(8px); opacity: 0; }
+        100% { transform: translateY(0); opacity: 1; }
+      }
+
+      @keyframes splashPulse {
+        0%, 100% { transform: scale(1); opacity: 0.7; }
+        50% { transform: scale(1.15); opacity: 1; }
+      }
+
+      @keyframes splashProgress {
+        0% { transform: translateX(-100%); }
+        50% { transform: translateX(50%); width: 70%; }
+        100% { transform: translateX(200%); width: 40%; }
+      }
+
+      @keyframes splashBounce {
+        0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
+        40% { transform: scale(1.15); opacity: 1; }
+      }
+    </style>
 
     <!-- Open Graph / Facebook / WhatsApp / Discord -->
     <meta property="og:type" content="website" />
@@ -61,7 +272,44 @@
     <meta name="twitter:image" content="https://whisper.runflix.name.ng/og-image.png?v=%BUILD_VERSION%" />
   </head>
   <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
-    <div id="root"></div>
+    <div id="root">
+      <div id="app-startup-splash" aria-label="Loading Whisper...">
+        <div class="splash-content">
+          <div class="splash-glow-aura"></div>
+          <div class="splash-logo-box">
+            <img 
+              src="https://whisper.runflix.name.ng/android-chrome-192x192.png" 
+              alt="Whisper" 
+              class="splash-logo-img" 
+              loading="eager"
+              onerror="this.style.display='none'; document.getElementById('splash-emoji-fallback').style.display='block';" 
+            />
+            <div id="splash-emoji-fallback" style="display:none; font-size: 38px; line-height: 1;">🤫</div>
+          </div>
+          
+          <h1 id="splash-title-text" class="splash-brand-title">Whisper</h1>
+          <p id="splash-subtitle-text" class="splash-brand-subtitle">Encrypted Anonymous Messaging</p>
+
+          <div class="splash-badge">
+            <svg class="splash-badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span id="splash-badge-text">End-to-End Encrypted</span>
+          </div>
+
+          <div class="splash-progress-track">
+            <div class="splash-progress-indicator"></div>
+          </div>
+
+          <div class="splash-dots">
+            <span class="splash-dot"></span>
+            <span class="splash-dot"></span>
+            <span class="splash-dot"></span>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

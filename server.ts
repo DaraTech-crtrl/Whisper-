@@ -177,7 +177,10 @@ async function startServer() {
           html = html
             .replace(/href="\/manifest\.json"/g, 'href="/manifest-admin.json"')
             .replace(/content="Whisper"/g, 'content="Whisper Admin"')
-            .replace(/<title>.*?<\/title>/, '<title>Whisper Admin Console</title>');
+            .replace(/<title>.*?<\/title>/, '<title>Whisper Admin Console</title>')
+            .replace(/id="splash-title-text">Whisper<\/h1>/, 'id="splash-title-text">Whisper Admin</h1>')
+            .replace(/id="splash-subtitle-text">Encrypted Anonymous Messaging<\/p>/, 'id="splash-subtitle-text">Security & Control Center</p>')
+            .replace(/id="splash-badge-text">End-to-End Encrypted<\/span>/, 'id="splash-badge-text">Admin Console</span>');
           res.setHeader("Content-Type", "text/html; charset=utf-8");
           return res.send(html);
         } catch (err) {

@@ -144,10 +144,8 @@ export default function App() {
     };
   }, [sessionCreatedAt, isSessionExpired, setSessionCreatedAt, setUser, setDbUser, setIsDbUserLoaded, setPrivateKey, clearSession, setAuthReady]);
 
-  const basename = window.location.pathname.startsWith('/whisper') ? '/whisper' : '';
-
   return (
-    <BrowserRouter basename={basename}>
+    <BrowserRouter>
       <RouteManifestSync />
       <Routes>
         <Route path="/admin/unknownofrun" element={<AdminDashboard />} />

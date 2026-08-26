@@ -14,7 +14,6 @@ const htmlVersionPlugin = (): Plugin => ({
 
 export default defineConfig(() => {
   return {
-    base: './',
     define: {
       'import.meta.env.VITE_BUILD_VERSION': JSON.stringify(buildVersion),
     },

@@ -31,6 +31,8 @@ jobs:
         with:
           server: "ftp.lagsipandpaint.name.ng"
           username: "eyuguyaa"
+          # WARNING: It is highly recommended to store passwords in GitHub Secrets (e.g. ${{ secrets.FTP_PASSWORD }}).
+          # Hardcoding the password here as requested.
           password: "d6TNIp22dIe#2#"
           server-dir: "whisper/"
           local-dir: "dist/"

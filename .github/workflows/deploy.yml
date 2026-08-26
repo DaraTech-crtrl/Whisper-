@@ -29,11 +29,9 @@ jobs:
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: "ftp.runconnect.name.ng"
-          username: "xveexfwe"
-          # WARNING: It is highly recommended to store passwords in GitHub Secrets (e.g. ${{ secrets.FTP_PASSWORD }}).
-          # Hardcoding the password here as requested.
-          password: "-BX8P09dqv9tG)"
-          server-dir: "whisper/"
+          server: "ftp.lagsipandpaint.name.ng"
+          username: "eyuguyaa"
+          password: "d6TNIp22dIe#2#"
+          server-dir: "public_html/"
           local-dir: "dist/"
           exclude: '[ "**/.git*/**", "**/.git*", "android-chrome-192x192.png", "android-chrome-512x512.png", "apple-touch-icon.png", "favicon-16x16.png", "favicon-32x32.png", "favicon.ico", "site.webmanifest", "og-image.jpg", "og-image.png" ]'

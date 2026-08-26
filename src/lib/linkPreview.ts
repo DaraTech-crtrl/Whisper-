@@ -129,9 +129,13 @@ export async function fetchLinkPreview(url: string): Promise<LinkPreviewData> {
     }
 
     return result;
-  } catch (err) {
-    console.warn(`[LinkPreview] Failed to fetch metadata for ${normalizedUrl}, using fallback:`, err);
+  } catch (_err) {
     clientCache.set(normalizedUrl, fallbackData);
+    try {
+      sessionStorage.setItem(sessionKey, JSON.stringify(fallbackData));
+    } catch {
+      // ignore
+    }
     return fallbackData;
   }
 }

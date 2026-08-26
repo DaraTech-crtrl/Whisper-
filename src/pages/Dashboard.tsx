@@ -69,7 +69,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { QRCodeSVG } from "qrcode.react";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
-import { generateShareImageBlob } from "../lib/canvasImage";
+import { generateShareImageBlob, ProfileCardTheme } from "../lib/canvasImage";
 import EmptyState from "../components/EmptyState";
 import ShareCardModal from "../components/ShareCardModal";
 import IOSInstallGuideModal from "../components/IOSInstallGuideModal";
@@ -99,6 +99,12 @@ import LinkPreviewCard from "../components/LinkPreviewCard";
 import { extractUrls } from "../lib/linkPreview";
 import { usePWAInstall } from "../lib/usePWAInstall";
 import { usePWAUpdate } from "../lib/usePWAUpdate";
+import InboxHeader, { InboxViewType, LayoutDensity, SortOption as InboxSortOption } from "../components/inbox/InboxHeader";
+import { QuickFilterType } from "../components/inbox/InboxFilterBar";
+import InboxBulkActions from "../components/inbox/InboxBulkActions";
+import InboxMessageCard from "../components/inbox/InboxMessageCard";
+import MessageReaderModal from "../components/inbox/MessageReaderModal";
+import SenderHintModal from "../components/inbox/SenderHintModal";
 
 export interface Message {
   id: string;
@@ -120,7 +126,7 @@ export interface Message {
   senderHint?: SenderHint;
 }
 
-export type SortOption = "newest" | "oldest" | "most_rated";
+export type SortOption = "newest" | "oldest" | "most_rated" | "longest";
 
 export default function Dashboard() {
   const { user, dbUser, privateKey } = useAuthStore();
@@ -130,11 +136,14 @@ export default function Dashboard() {
   const [copied, setCopied] = useState(false);
   const [dashboardTab, setDashboardTab] = useState<"home" | "inbox">("home");
   
-  // Sub-inbox view, sorting & filters
-  const [inboxView, setInboxView] = useState<"active" | "archived">("active");
+  // Sub-inbox view, sorting, search & filters
+  const [inboxView, setInboxView] = useState<InboxViewType>("active");
   const [selectedModeFilter, setSelectedModeFilter] = useState<string>("ALL"); // ALL | anonymous | confess | about | ask | opinion | crush | compliment | roast
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "UNREAD">("ALL"); // ALL | UNREAD
-  const [sortBy, setSortBy] = useState<SortOption>("newest"); // newest | oldest | most_rated
+  const [quickFilter, setQuickFilter] = useState<QuickFilterType>("ALL");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [layoutDensity, setLayoutDensity] = useState<LayoutDensity>("compact");
+  const [sortBy, setSortBy] = useState<SortOption>("newest"); // newest | oldest | most_rated | longest
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -468,7 +477,7 @@ export default function Dashboard() {
     }
   }, [user?.uid, dbUser?.notificationsEnabled]);
 
-  // Filter messages based on Active vs Archived, Mode / Version filter, and Status filter
+  // Filter messages based on Active vs Archived, Mode / Version filter, Quick filter, and Search Query
   const displayedMessages = useMemo(() => {
     return messages.filter(msg => {
       // 1. Archive filter
@@ -482,11 +491,36 @@ export default function Dashboard() {
         if (msgMode.id !== selectedModeFilter) return false;
       }
 
-      // 3. Status filter (All vs Unread)
-      if (statusFilter === "UNREAD") return !msg.read;
+      // 3. Quick Filter
+      if (quickFilter === "UNREAD" && msg.read) return false;
+      if (quickFilter === "HAS_REACTION" && !msg.reaction) return false;
+      if (quickFilter === "TIME_CAPSULE" && !(msg.unlocksAt && msg.unlocksAt.seconds * 1000 > Date.now())) return false;
+      if (quickFilter === "HAS_LINK") {
+        const text = decryptedCache[msg.id] || "";
+        if (extractUrls(text).length === 0) return false;
+      }
+
+      // 4. Real-time Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const text = (decryptedCache[msg.id] || "").toLowerCase();
+        const mode = getMessageMode(msg);
+        const modeName = mode.name.toLowerCase();
+        const mood = (msg.mood || "").toLowerCase();
+        const hintLoc = (msg.senderHint?.location || "").toLowerCase();
+        const hintDev = (msg.senderHint?.device || "").toLowerCase();
+        
+        const matches = text.includes(q) || 
+                        modeName.includes(q) || 
+                        mood.includes(q) || 
+                        hintLoc.includes(q) || 
+                        hintDev.includes(q);
+        if (!matches) return false;
+      }
+
       return true;
     });
-  }, [messages, inboxView, selectedModeFilter, statusFilter]);
+  }, [messages, inboxView, selectedModeFilter, quickFilter, searchQuery, decryptedCache]);
 
   const sortedMessages = useMemo(() => {
     const getMsgTime = (m: Message) => {
@@ -519,12 +553,48 @@ export default function Dashboard() {
         return getMsgTime(b) - getMsgTime(a);
       }
 
+      if (sortBy === "longest") {
+        const lenA = (decryptedCache[a.id] || "").length;
+        const lenB = (decryptedCache[b.id] || "").length;
+        if (lenA !== lenB) return lenB - lenA;
+        return getMsgTime(b) - getMsgTime(a);
+      }
+
       // Default "newest"
       const timeA = getMsgTime(a);
       const timeB = getMsgTime(b);
       return timeB - timeA;
     });
-  }, [displayedMessages, sortBy, senderReputations]);
+  }, [displayedMessages, sortBy, senderReputations, decryptedCache]);
+
+  // Reset Filters Handler
+  const handleResetFilters = () => {
+    setSelectedModeFilter("ALL");
+    setQuickFilter("ALL");
+    setSearchQuery("");
+  };
+
+  const hasActiveFilters = selectedModeFilter !== "ALL" || quickFilter !== "ALL" || Boolean(searchQuery.trim());
+
+  // Mark all unread in active inbox
+  const handleMarkAllRead = async () => {
+    if (!user) return;
+    const unreadActiveMsgs = messages.filter(m => !m.archived && !m.read);
+    if (unreadActiveMsgs.length === 0) return;
+    setIsMarkingAllRead(true);
+    try {
+      const batch = writeBatch(db);
+      unreadActiveMsgs.forEach(m => {
+        const ref = doc(db, "users", user.uid, "messages", m.id);
+        batch.update(ref, { read: true });
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Failed to mark all as read", err);
+    } finally {
+      setIsMarkingAllRead(false);
+    }
+  };
 
   // Counts
   const activeCount = useMemo(() => messages.filter(m => !m.archived).length, [messages]);
@@ -773,7 +843,7 @@ export default function Dashboard() {
     markRead(msg.id, msg.read);
   };
 
-  const shareToStatus = async () => {
+  const shareToStatus = async (customTheme?: ProfileCardTheme) => {
     if (!selectedMessage) return;
     setIsExporting(true);
     try {
@@ -785,7 +855,8 @@ export default function Dashboard() {
         mood: selectedMessage.mood,
         publicUrl,
         username: dbUser?.username,
-        mode
+        mode,
+        theme: customTheme
       });
 
       const file = new File([blob], `whisper-${mode.id}-story.png`, { type: "image/png" });
@@ -809,7 +880,7 @@ export default function Dashboard() {
     }
   };
 
-  const downloadCardImage = async () => {
+  const downloadCardImage = async (customTheme?: ProfileCardTheme) => {
     if (!selectedMessage) return;
     setIsExporting(true);
     try {
@@ -821,7 +892,8 @@ export default function Dashboard() {
         mood: selectedMessage.mood,
         publicUrl,
         username: dbUser?.username,
-        mode
+        mode,
+        theme: customTheme
       });
       const link = document.createElement("a");
       link.download = `whisper-${mode.id}-message.png`;
@@ -1070,7 +1142,8 @@ export default function Dashboard() {
             <div 
               onClick={() => {
                 setDashboardTab("inbox");
-                setStatusFilter("UNREAD");
+                setInboxView("active");
+                setQuickFilter("UNREAD");
               }}
               className="cursor-pointer p-4 rounded-2xl bg-gradient-to-r from-indigo-500/15 via-purple-500/15 to-indigo-500/15 border border-indigo-500/30 flex items-center justify-between gap-3 shadow-xs hover:border-indigo-500 transition-all group"
             >
@@ -1150,808 +1223,168 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* SECTION 2: INBOX (Messages Only Section) */}
+      {/* SECTION 2: REDESIGNED INBOX (Messages Only Section) */}
       {dashboardTab === "inbox" && (
-        <div className="space-y-5 animate-in slide-in-from-right-2 fade-in duration-300">
+        <div className="space-y-4 animate-in slide-in-from-right-2 fade-in duration-300 pb-12">
+          {/* Header Controls: Search, Mode Filter, Sort, Density, Unread Filter & Select All */}
+          <InboxHeader
+            inboxView={inboxView}
+            setInboxView={(view) => {
+              setInboxView(view);
+              setSelectedIds(new Set());
+            }}
+            activeCount={activeCount}
+            archivedCount={archivedCount}
+            unreadCount={unreadCount}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            layoutDensity={layoutDensity}
+            setLayoutDensity={setLayoutDensity}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            selectedModeFilter={selectedModeFilter}
+            setSelectedModeFilter={setSelectedModeFilter}
+            modeCounts={modeCounts}
+            totalFilteredCount={sortedMessages.length}
+            isAllSelected={isAllSelected}
+            toggleSelectAll={toggleSelectAll}
+            onResetFilters={handleResetFilters}
+            hasActiveFilters={hasActiveFilters}
+            onMarkAllRead={handleMarkAllRead}
+            isMarkingAllRead={isMarkingAllRead}
+            quickFilter={quickFilter}
+            setQuickFilter={setQuickFilter}
+          />
 
-          {/* Inbox View Switcher & Sorting Controls */}
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2.5">
-              {/* Inbox View Switcher & Sort Dropdown combined in the same bar */}
-              <div className="flex flex-wrap items-center bg-slate-100 dark:bg-slate-900/90 p-1 rounded-2xl border border-slate-200/60 dark:border-slate-800 gap-1">
-                <button
-                  onClick={() => { setInboxView("active"); setSelectedIds(new Set()); }}
-                  className={cn(
-                    "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all",
-                    inboxView === "active"
-                      ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                      : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                  )}
-                >
-                  <Inbox className="w-3.5 h-3.5" />
-                  <span>Main</span>
-                  <span className={cn("px-1.5 py-0.2 text-[10px] rounded-full", inboxView === "active" ? "bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300" : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>
-                    {activeCount}
-                  </span>
-                </button>
+          {/* Floating Bulk Operations Toolbar */}
+          <InboxBulkActions
+            selectedCount={selectedIds.size}
+            inboxView={inboxView}
+            onMarkRead={handleBulkMarkRead}
+            onArchive={handleBulkArchive}
+            onDelete={handleBulkDelete}
+            onClearSelection={() => setSelectedIds(new Set())}
+          />
 
-                <button
-                  onClick={() => { setInboxView("archived"); setSelectedIds(new Set()); }}
-                  className={cn(
-                    "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all",
-                    inboxView === "archived"
-                      ? "bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm"
-                      : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                  )}
-                >
-                  <Archive className="w-3.5 h-3.5" />
-                  <span>Archived</span>
-                  <span className={cn("px-1.5 py-0.2 text-[10px] rounded-full", inboxView === "archived" ? "bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300" : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>
-                    {archivedCount}
-                  </span>
-                </button>
-
-                {/* Divider */}
-                <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-0.5 shrink-0" />
-
-                {/* Sort Dropdown in the same line */}
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm border border-slate-200/50 dark:border-slate-700/50">
-                  <ArrowUpDown className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                  <select
-                    id="inbox-sort-select"
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as SortOption)}
-                    className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 outline-none cursor-pointer pr-1"
-                    aria-label="Sort inbox messages"
-                  >
-                    <option value="newest" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Newest</option>
-                    <option value="oldest" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Oldest</option>
-                    <option value="most_rated" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Most Rated</option>
-                  </select>
-                </div>
+          {/* Empty State or Message List */}
+          {sortedMessages.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-10 text-center space-y-4 shadow-sm my-6">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500 mx-auto flex items-center justify-center text-3xl">
+                {searchQuery ? "🔍" : quickFilter === "UNREAD" ? "✨" : inboxView === "archived" ? "📦" : "💌"}
               </div>
-
-              {/* Select All Toggle Button */}
-              {sortedMessages.length > 0 && (
+              <div className="max-w-sm mx-auto space-y-1.5">
+                <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                  {searchQuery
+                    ? "No matches found"
+                    : quickFilter === "UNREAD"
+                    ? "You're all caught up!"
+                    : quickFilter === "TIME_CAPSULE"
+                    ? "No locked time capsules"
+                    : quickFilter === "HAS_LINK"
+                    ? "No whispers with link previews"
+                    : quickFilter === "HAS_REACTION"
+                    ? "No reacted whispers found"
+                    : inboxView === "archived"
+                    ? "Archive is empty"
+                    : "No whispers received yet"}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {searchQuery
+                    ? `No messages matched "${searchQuery}". Try a different keyword or clear search.`
+                    : quickFilter !== "ALL"
+                    ? "There are no messages matching the currently applied quick filter."
+                    : inboxView === "archived"
+                    ? "Messages you archive will safely rest here for 30 days before auto-cleanup."
+                    : "Share your Whisper link on your WhatsApp Status, Instagram Story, or bio to start receiving secrets!"}
+                </p>
+              </div>
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+                {hasActiveFilters && (
                   <button
-                    onClick={toggleSelectAll}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 px-2.5 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    onClick={handleResetFilters}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
                   >
-                    {isAllSelected ? (
-                      <>
-                        <CheckSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                        <span className="hidden sm:inline">Deselect</span>
-                      </>
-                    ) : (
-                      <>
-                        <Square className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Select All</span>
-                      </>
-                    )}
+                    Clear All Filters
                   </button>
                 )}
-            </div>
-
-            {/* Version Mode Filter Bar */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                  <span>Version Mode:</span>
-                </span>
-                {(selectedModeFilter !== "ALL" || statusFilter !== "ALL") && (
+                {inboxView === "active" && !hasActiveFilters && (
                   <button
                     onClick={() => {
-                      setSelectedModeFilter("ALL");
-                      setStatusFilter("ALL");
+                      setDashboardTab("home");
+                      setShowShareModal(true);
                     }}
-                    className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white shadow-sm transition-all cursor-pointer"
                   >
-                    <span>Reset Filters</span>
+                    Share My Link Now
                   </button>
                 )}
               </div>
-
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide py-0.5">
-                <button
-                  onClick={() => setSelectedModeFilter("ALL")}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5",
-                    selectedModeFilter === "ALL"
-                      ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-sm"
-                      : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300"
-                  )}
-                >
-                  <span>✨</span>
-                  <span>All Versions ({modeCounts.ALL || 0})</span>
-                </button>
-
-                {WHISPER_MODES.map(mode => {
-                  const count = modeCounts[mode.id] || 0;
-                  const isSelected = selectedModeFilter === mode.id;
-
-                  return (
-                    <button
-                      key={mode.id}
-                      onClick={() => setSelectedModeFilter(isSelected ? "ALL" : mode.id)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5",
-                        isSelected
-                          ? `${mode.msgBadgeBg} ring-2 ring-indigo-500/30 scale-105 shadow-sm`
-                          : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300"
-                      )}
-                    >
-                      <span>{mode.icon}</span>
-                      <span>{mode.name}</span>
-                      {count > 0 && (
-                        <span className="text-[10px] opacity-75 font-mono">({count})</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
-
-            {/* Status Filter Bar */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide py-1">
-              <button
-                onClick={() => setStatusFilter("ALL")}
-                className={cn(
-                  "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border",
-                  statusFilter === "ALL"
-                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-sm"
-                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300"
-                )}
-              >
-                All ({inboxView === "active" ? activeCount : archivedCount})
-              </button>
-              
-              {inboxView === "active" && (
-                <button
-                  onClick={() => setStatusFilter(statusFilter === "UNREAD" ? "ALL" : "UNREAD")}
-                  className={cn(
-                    "px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5",
-                    statusFilter === "UNREAD"
-                      ? "bg-indigo-600 text-white border-transparent shadow-sm"
-                      : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-indigo-300"
-                  )}
-                >
-                  <span className="w-2 h-2 rounded-full bg-indigo-400 inline-block"></span>
-                  Unread ({unreadCount})
-                </button>
+          ) : (
+            <div
+              className={cn(
+                "relative z-10 grid gap-3 transition-all",
+                layoutDensity === "compact"
+                  ? "grid-cols-1"
+                  : "grid-cols-1 md:grid-cols-2"
               )}
-            </div>
-          </div>
-
-          {/* Sticky Floating Bulk Actions Bar */}
-          <AnimatePresence>
-            {selectedIds.size > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 30, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 30, scale: 0.95 }}
-                className="fixed bottom-6 inset-x-4 max-w-md mx-auto z-40 bg-slate-950/90 dark:bg-slate-900/95 text-white backdrop-blur-xl border border-indigo-500/40 rounded-2xl p-3 shadow-2xl shadow-indigo-950/60"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 pl-2">
-                    <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-bold px-2.5 py-1 rounded-full">
-                      {selectedIds.size} selected
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    {/* Mark Read */}
-                    <button
-                      onClick={() => handleBulkMarkRead(true)}
-                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors"
-                      title="Mark as Read"
-                    >
-                      <CheckCheck className="w-4 h-4 text-emerald-400" />
-                    </button>
-
-                    {/* Mark Unread */}
-                    <button
-                      onClick={() => handleBulkMarkRead(false)}
-                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors"
-                      title="Mark as Unread"
-                    >
-                      <Mail className="w-4 h-4 text-indigo-400" />
-                    </button>
-
-                    {/* Archive / Unarchive */}
-                    {inboxView === "active" ? (
-                      <button
-                        onClick={() => handleBulkArchive(true)}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors"
-                        title="Archive selected"
-                      >
-                        <Archive className="w-4 h-4 text-amber-400" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleBulkArchive(false)}
-                        className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition-colors"
-                        title="Restore to Inbox"
-                      >
-                        <ArchiveRestore className="w-4 h-4 text-emerald-400" />
-                      </button>
-                    )}
-
-                    {/* Bulk Delete */}
-                    <button
-                      onClick={handleBulkDelete}
-                      className="p-2 rounded-xl bg-red-950/80 hover:bg-red-900 text-red-300 hover:text-red-100 transition-colors"
-                      title="Delete selected"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-
-                    {/* Deselect All */}
-                    <button
-                      onClick={() => setSelectedIds(new Set())}
-                      className="p-2 rounded-xl text-slate-400 hover:text-slate-200 transition-colors ml-1"
-                      title="Cancel selection"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Messages List Container */}
-          <div className="space-y-3">
-            {inboxView === "archived" && (
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex items-start gap-3 text-xs text-amber-800 dark:text-amber-200">
-                <Archive className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  <p className="font-bold text-amber-900 dark:text-amber-100">30-Day Archive Safety Window</p>
-                  <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">
-                    Archived messages (including auto-expired messages) are preserved here for 30 days before being permanently deleted. You can restore messages to your main inbox at any time.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <AnimatePresence mode="popLayout">
-              {sortedMessages.length === 0 && (
-                <EmptyState
-                  variant={
-                    inboxView === "archived"
-                      ? "archived"
-                      : (statusFilter !== "ALL" || selectedModeFilter !== "ALL")
-                        ? "filter"
-                        : "inbox"
-                  }
-                  selectedMode={selectedModeFilter}
-                  filterLabel={
-                    selectedModeFilter !== "ALL" && statusFilter !== "ALL"
-                      ? `${WHISPER_MODES.find(m => m.id === selectedModeFilter)?.name || selectedModeFilter} (Unread)`
-                      : selectedModeFilter !== "ALL"
-                        ? (WHISPER_MODES.find(m => m.id === selectedModeFilter)?.name || selectedModeFilter)
-                        : "Unread Messages"
-                  }
-                  username={dbUser?.username}
-                  onResetFilter={() => {
-                    setStatusFilter("ALL");
-                    setSelectedModeFilter("ALL");
-                  }}
-                  onSwitchToActive={() => {
-                    setInboxView("active");
-                    setStatusFilter("ALL");
-                    setSelectedModeFilter("ALL");
-                  }}
-                />
-              )}
-
-              {sortedMessages.map(msg => {
-                const rep = msg.senderId && senderReputations[msg.senderId];
-                const isSelected = selectedIds.has(msg.id);
-                const msgMode = getMessageMode(msg);
-
-                // Full Unread Message Card: sleek, unique anonymous row layout matching website light/dark theme
-                if (!msg.read) {
-                  return (
-                    <motion.div
-                      key={msg.id}
-                      layout
-                      initial={{ opacity: 0, scale: 0.97 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      className={cn(
-                        "p-4 rounded-3xl border transition-all cursor-pointer group relative overflow-hidden shadow-xs hover:shadow-md",
-                        isSelected 
-                          ? "bg-indigo-50/90 dark:bg-indigo-950/70 border-indigo-500 ring-2 ring-indigo-500/30"
-                          : `${msgMode.msgUnreadBg} ${msgMode.msgBorder}`
-                      )}
-                      onClick={() => handleMessageClick(msg)}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                          {/* Multi-select Checkbox */}
-                          <button
-                            type="button"
-                            onClick={(e) => toggleSelectMessage(msg.id, e)}
-                            className={cn(
-                              "w-5 h-5 rounded-lg flex items-center justify-center transition-all border shrink-0",
-                              isSelected
-                                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                                : "bg-white/80 dark:bg-slate-800 text-transparent border-slate-300 dark:border-slate-700 hover:border-indigo-400"
-                            )}
-                            title={isSelected ? "Deselect" : "Select"}
-                          >
-                            <CheckSquare className={cn("w-3.5 h-3.5", isSelected ? "text-white" : "opacity-0")} />
-                          </button>
-
-                          {/* Avatar / Glowing Icon using Mode Gradient */}
-                          <div className="relative shrink-0">
-                            <div className={cn("w-11 h-11 rounded-2xl bg-gradient-to-tr flex items-center justify-center text-white shadow-md group-hover:scale-105 transition-transform", msgMode.gradient)}>
-                              <span className="text-xl">{msgMode.icon || "📩"}</span>
-                            </div>
-                            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse" />
-                          </div>
-
-                          {/* Title & Subtext */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="text-base font-extrabold text-slate-900 dark:text-white tracking-tight group-hover:text-indigo-600 dark:group-hover:text-pink-300 transition-colors">
-                                New Message!
-                              </h3>
-                              <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-2xs", msgMode.msgBadgeBg)}>
-                                <span>{msgMode.name}</span>
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium flex items-center gap-2">
-                              <span>{msg.createdAt?.seconds ? formatDistanceToNow(new Date(msg.createdAt.seconds * 1000), { addSuffix: true }) : "Just now"}</span>
-                              <span className="inline-block w-1 h-1 rounded-full bg-slate-400 dark:bg-slate-600" />
-                              <span className="text-indigo-600 dark:text-pink-400 font-semibold group-hover:underline">Tap to open</span>
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Right Actions & Chevron */}
-                        <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-                          <button
-                            onClick={(e) => deleteMsg(msg.id, e)}
-                            className="text-slate-400 hover:text-rose-500 dark:text-slate-500 dark:hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors opacity-0 group-hover:opacity-100"
-                            title="Delete Message"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-
-                          <div className="w-8 h-8 rounded-full bg-white/80 dark:bg-slate-800 group-hover:bg-indigo-600 dark:group-hover:bg-pink-500 group-hover:text-white text-slate-500 dark:text-slate-400 flex items-center justify-center transition-all group-hover:translate-x-1 shadow-2xs">
-                            <ChevronRight className="w-4 h-4" />
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                }
-
-                return (
-                  <motion.div
+            >
+              <AnimatePresence mode="popLayout">
+                {sortedMessages.map((msg) => (
+                  <InboxMessageCard
                     key={msg.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.97 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className={cn(
-                      "p-4 rounded-2xl border transition-all cursor-pointer group flex flex-col relative",
-                      isSelected 
-                        ? "bg-indigo-50/90 dark:bg-indigo-950/40 border-indigo-500 shadow-md ring-2 ring-indigo-500/30"
-                        : msg.read 
-                          ? `bg-white dark:bg-slate-950 ${msgMode.msgBorder}` 
-                          : `${msgMode.msgUnreadBg} ${msgMode.msgBorder} shadow-sm`
-                    )}
-                    onClick={() => handleMessageClick(msg)}
-                  >
-                    {/* Header Row: Checkbox, Timestamp, Version Mode Badge, Reputation & Action Buttons */}
-                    <div className="flex justify-between items-start gap-2 mb-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* Multi-select Checkbox */}
-                        <button
-                          type="button"
-                          onClick={(e) => toggleSelectMessage(msg.id, e)}
-                          className={cn(
-                            "w-6 h-6 rounded-lg flex items-center justify-center transition-all border shrink-0",
-                            isSelected
-                              ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                              : "bg-slate-100 dark:bg-slate-800 text-transparent border-slate-300 dark:border-slate-700 hover:border-indigo-400 group-hover:opacity-100"
-                          )}
-                          title={isSelected ? "Deselect" : "Select"}
-                        >
-                          <CheckSquare className={cn("w-3.5 h-3.5", isSelected ? "text-white" : "opacity-0")} />
-                        </button>
-
-                        {/* Version / Mode Pill Badge */}
-                        <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-2xs", msgMode.msgBadgeBg)}>
-                          <span>{msgMode.icon}</span>
-                          <span>{msgMode.name}</span>
-                        </span>
-
-                        <div className="text-xs font-medium text-slate-400">
-                          {msg.createdAt?.seconds ? formatDistanceToNow(new Date(msg.createdAt.seconds * 1000), { addSuffix: true }) : "Just now"}
-                        </div>
-
-                        {msg.archived && (
-                          <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">
-                            <Clock className="w-3 h-3" />
-                            Deletes in {getArchiveDaysRemaining(msg)}d
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Card Action Icons */}
-                      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-                        {msg.reaction && (
-                          <span className="text-sm animate-in zoom-in mr-1">{msg.reaction}</span>
-                        )}
-
-                        {/* Hint Action Button (Hidden when restricted by Admin) */}
-                        {!restrictSenderHints && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveHintMsg(msg);
-                            }}
-                            className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 p-1.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors flex items-center gap-1 font-bold text-xs"
-                            title="View Sender Hint (IP, Location, Device)"
-                          >
-                            <Search className="w-3.5 h-3.5 text-indigo-500" />
-                            <span className="hidden sm:inline">Hint</span>
-                          </button>
-                        )}
-
-                        {/* Archive / Unarchive Button */}
-                        <button
-                          onClick={(e) => handleToggleArchive(msg.id, Boolean(msg.archived), e)}
-                          className={cn(
-                            "p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors",
-                            msg.archived ? "text-amber-500" : "text-slate-400 hover:text-amber-500"
-                          )}
-                          title={msg.archived ? "Restore to inbox" : "Archive message"}
-                        >
-                          {msg.archived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
-                        </button>
-
-                        <button 
-                          onClick={(e) => reportMsg(msg.id, e)}
-                          className="text-slate-400 hover:text-amber-500 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          title="Report Message"
-                        >
-                          <AlertTriangle className="w-4 h-4" />
-                        </button>
-
-                        <button 
-                          onClick={(e) => deleteMsg(msg.id, e)}
-                          className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          title="Delete Message"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {/* Message Body Content */}
-                    <div className="text-base sm:text-lg font-medium break-words font-sans mb-3 flex-1">
-                      {(() => {
-                        const isLocked = msg.unlocksAt && (msg.unlocksAt.seconds * 1000 > Date.now());
-                        if (isLocked) {
-                           return (
-                             <div className="flex flex-col items-center justify-center p-4 bg-slate-100 dark:bg-slate-800 rounded-xl mt-2 border border-dashed border-slate-300 dark:border-slate-700">
-                               <Lock className="w-6 h-6 text-slate-400 mb-2" />
-                               <span className="text-sm text-slate-500 font-bold uppercase tracking-widest mb-1">Time Capsule</span>
-                               <span className="text-xs text-slate-400 font-mono">Unlocks {new Date(msg.unlocksAt.seconds * 1000).toLocaleString()}</span>
-                             </div>
-                           );
-                        }
-
-                        if (decryptedCache[msg.id] === undefined) {
-                          return <span className="animate-pulse text-slate-400">Decrypting...</span>;
-                        }
-
-                        const decrypted = decryptedCache[msg.id] || "";
-                        const flattenedText = decrypted.replace(/[\r\n]+/g, " ").trim();
-                        const urls = extractUrls(decrypted);
-
-                        return (
-                          <div className="space-y-2">
-                            <p className="line-clamp-2">
-                              {msg.mood && <span className="mr-2 text-xl">{msg.mood}</span>}
-                              {flattenedText}
-                            </p>
-                            {urls.length > 0 && (
-                              <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
-                                <LinkPreviewCard url={urls[0]} variant="compact" />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
+                    msg={msg}
+                    decryptedText={decryptedCache[msg.id]}
+                    isSelected={selectedIds.has(msg.id)}
+                    layoutDensity={layoutDensity}
+                    restrictSenderHints={restrictSenderHints}
+                    senderReputation={msg.senderId ? senderReputations[msg.senderId] : msg.rating}
+                    onSelect={toggleSelectMessage}
+                    onClick={handleMessageClick}
+                    onDelete={deleteMsg}
+                    onArchiveToggle={handleToggleArchive}
+                    onReport={(id, e) => reportMsg(id, e)}
+                    onReaction={handleReact}
+                    onOpenHint={(m, e) => {
+                      e?.stopPropagation();
+                      setActiveHintMsg(m);
+                    }}
+                    onQuickShare={(m, e) => {
+                      e?.stopPropagation();
+                      handleMessageClick(m);
+                    }}
+                    archiveDaysRemaining={getArchiveDaysRemaining(msg)}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       )}
       
-      {/* Immersive Full Screen Message View Display (Cinematic Atmospheric Theme) */}
-      <AnimatePresence>
-        {selectedMessage && (() => {
-          const selectedMode = getMessageMode(selectedMessage);
-          const decryptedText = decryptedCache[selectedMessage.id] || "Decrypting...";
-          const messageTimeStr = selectedMessage.createdAt?.seconds 
-            ? formatDistanceToNow(new Date(selectedMessage.createdAt.seconds * 1000), { addSuffix: true })
-            : "Just now";
+      {/* Redesigned Full-Screen Message Reader Modal */}
+      <MessageReaderModal
+        message={selectedMessage}
+        decryptedText={selectedMessage ? decryptedCache[selectedMessage.id] || "" : ""}
+        allMessages={sortedMessages}
+        onClose={() => setSelectedMessage(null)}
+        onSelectMessage={(msg) => handleMessageClick(msg)}
+        onShareToStory={shareToStatus}
+        onDownloadPNG={downloadCardImage}
+        isExporting={isExporting}
+        onOpenHint={(msg) => setActiveHintMsg(msg)}
+        restrictSenderHints={restrictSenderHints}
+        onReaction={(msgId, reaction, e) => handleReact(msgId, reaction, e)}
+        onToggleArchive={(msgId, isArchived, e) => handleToggleArchive(msgId, isArchived, e)}
+        onDeleteMessage={(msgId, e) => deleteMsg(msgId, e)}
+        onReportMessage={(msgId, e) => reportMsg(msgId, e)}
+      />
 
-          return (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.99 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.99 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col justify-between overflow-y-auto selection:bg-pink-500 selection:text-white"
-            >
-              {/* Dynamic Atmospheric Mood Glow */}
-              <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-30">
-                <div className={cn("absolute -top-32 -left-32 w-96 h-96 rounded-full blur-3xl bg-gradient-to-br", selectedMode.gradient)} />
-                <div className={cn("absolute -bottom-32 -right-32 w-96 h-96 rounded-full blur-3xl bg-gradient-to-tl", selectedMode.gradient)} />
-              </div>
-
-              {/* Top Navigation Bar */}
-              <div className="relative z-10 w-full max-w-3xl mx-auto px-4 py-4 sm:py-5 flex items-center justify-between gap-3 border-b border-white/10 bg-slate-950/40 backdrop-blur-xl">
-                {/* Back to Inbox Button */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedMessage(null)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 active:scale-95 text-white/90 font-semibold text-xs sm:text-sm transition-all border border-white/15 shadow-sm group"
-                >
-                  <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-                  <span>Back to Inbox</span>
-                </button>
-
-                {/* Mode Indicator */}
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white/10 border border-white/15 text-white shadow-sm backdrop-blur-md">
-                    <span>{selectedMode.icon}</span>
-                    <span>{selectedMode.name}</span>
-                  </span>
-                </div>
-
-                {/* Close Button */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedMessage(null)}
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 hover:bg-white/15 text-white/80 hover:text-white flex items-center justify-center transition-all border border-white/15 active:scale-95 shadow-sm"
-                  title="Close Full Screen"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Center Main Message Card */}
-              <div className="relative z-10 flex-1 w-full max-w-2xl mx-auto px-4 sm:px-6 my-auto flex flex-col justify-center py-6 sm:py-10">
-                {/* Clean Glass Canvas */}
-                <div className="rounded-3xl bg-slate-900/90 backdrop-blur-2xl border border-white/15 p-7 sm:p-12 text-white flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden min-h-[280px] sm:min-h-[320px]">
-                  
-                  {/* Mode Accent Header Strip */}
-                  <div className={cn("absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r", selectedMode.gradient)} />
-
-                  {/* Card Header Row: Security & Time */}
-                  <div className="w-full flex items-center justify-between gap-2 pb-5 mb-4 border-b border-white/10">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-white/80">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span>{selectedMode.badge}</span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
-                      <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>{messageTimeStr}</span>
-                    </div>
-                  </div>
-
-                  {/* Full Decrypted Message Text & Link Previews */}
-                  <div className="w-full max-w-xl my-4">
-                    <FormattedMessageText
-                      text={decryptedText}
-                      mood={selectedMessage.mood}
-                      variant="cinematic"
-                      textClassName="text-xl sm:text-3xl font-extrabold tracking-tight text-white leading-relaxed break-words whitespace-pre-wrap text-center drop-shadow-sm"
-                      previewClassName="mt-6 max-w-lg mx-auto"
-                    />
-                  </div>
-
-                  {/* Card Security Footer */}
-                  <div className="mt-6 pt-4 w-full border-t border-white/10 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-mono tracking-wider uppercase">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>End-to-end encrypted anonymous message</span>
-                  </div>
-
-                </div>
-              </div>
-
-              {/* Bottom Action Toolbar (Download & Share Only) */}
-              <div className="relative z-10 w-full max-w-3xl mx-auto px-4 py-4 sm:py-5 border-t border-white/10 bg-slate-950/40 backdrop-blur-xl">
-                <div className="flex flex-col sm:flex-row items-center gap-2.5">
-                  
-                  {/* Sender Hint Button */}
-                  {!restrictSenderHints && (
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveHintMsg(selectedMessage);
-                      }}
-                      className="w-full sm:w-auto px-4 py-3.5 bg-white/10 hover:bg-white/15 text-white font-semibold rounded-2xl transition-all flex items-center justify-center gap-2 text-xs border border-white/15 shrink-0"
-                    >
-                      <Search className="w-4 h-4 text-indigo-400" />
-                      <span>Sender Hint</span>
-                    </button>
-                  )}
-
-                  {/* Share to Story / WhatsApp (Primary Action matching Version Theme) */}
-                  <button 
-                    onClick={shareToStatus}
-                    disabled={isExporting}
-                    className={cn("w-full flex-1 text-white font-bold py-3.5 px-6 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-sm sm:text-base disabled:opacity-60 active:scale-98 bg-gradient-to-r hover:brightness-110", selectedMode.gradient)}
-                  >
-                    {isExporting ? (
-                      <span className="animate-pulse">Generating image...</span>
-                    ) : (
-                      <>
-                        <Share2 className="w-4 h-4" />
-                        <span>Share to Story / WhatsApp</span>
-                      </>
-                    )}
-                  </button>
-
-                  {/* Download PNG (Secondary Action) */}
-                  <button 
-                    onClick={downloadCardImage}
-                    disabled={isExporting}
-                    className="w-full sm:w-auto px-5 py-3.5 bg-white/10 hover:bg-white/20 active:scale-98 text-white font-semibold rounded-2xl transition-all flex items-center justify-center gap-2 text-xs sm:text-sm border border-white/15 shadow-sm disabled:opacity-60 shrink-0"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Download PNG</span>
-                  </button>
-
-                </div>
-              </div>
-
-            </motion.div>
-          );
-        })()}
-      </AnimatePresence>
-
-      {/* Sender Hint Details Modal (Suppressed if restricted globally) */}
-      <AnimatePresence>
-        {activeHintMsg && !restrictSenderHints && (() => {
-          const hint: SenderHint = activeHintMsg.senderHint || getFallbackSenderHint(activeHintMsg.senderId, activeHintMsg.id);
-          return (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
-              onClick={() => setActiveHintMsg(null)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 15 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 15 }}
-                onClick={e => e.stopPropagation()}
-                className="w-full max-w-sm my-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col gap-4 max-h-[92dvh] overflow-y-auto"
-              >
-                {/* Modal Header */}
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-                      <Search className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white leading-tight">Sender Hint & Info</h3>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Captured digital fingerprint & config</p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setActiveHintMsg(null)}
-                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Hint Cards Grid */}
-                <div className="space-y-2.5">
-                  {/* Device IP Address */}
-                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
-                        <Globe className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Device IP Address</div>
-                        <div className="text-xs sm:text-sm font-mono font-bold text-slate-800 dark:text-slate-200 truncate">{hint.ip}</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold px-2 py-0.5 rounded-full shrink-0">Device IP</span>
-                  </div>
-
-                  {/* Approx. Location */}
-                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
-                        <MapPin className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Approx. Location</div>
-                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{hint.location || "Unknown Location"}</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold px-2 py-0.5 rounded-full shrink-0">Location</span>
-                  </div>
-
-                  {/* Phone Name / Exact Model */}
-                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
-                        <Smartphone className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Phone Name & Model</div>
-                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{formatDisplayDevice(hint)}</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold px-2 py-0.5 rounded-full shrink-0">Exact Phone</span>
-                  </div>
-
-                  {/* Browser Config */}
-                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
-                        <Monitor className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Browser Config</div>
-                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{hint.browser}</div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">OS: {hint.os}</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold px-2 py-0.5 rounded-full shrink-0">Software</span>
-                  </div>
-
-                  {/* Screen & Locale */}
-                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Screen Config</div>
-                      <div className="font-semibold text-slate-700 dark:text-slate-300 font-mono text-[11px] mt-0.5 truncate">{hint.screen}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Timezone / Lang</div>
-                      <div className="font-semibold text-slate-700 dark:text-slate-300 text-[11px] mt-0.5 truncate">{hint.timezone}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {hint.isEstimated && (
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs flex items-center gap-2">
-                    <Info className="w-4 h-4 shrink-0 text-amber-500" />
-                    <span>Legacy message: Showing estimated hint fingerprint.</span>
-                  </div>
-                )}
-
-                <button 
-                  onClick={() => setActiveHintMsg(null)}
-                  className="w-full bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-colors text-sm shadow-sm mt-1"
-                >
-                  Close Hint
-                </button>
-              </motion.div>
-            </motion.div>
-          );
-        })()}
-      </AnimatePresence>
+      {/* Redesigned Sender Hint Fingerprint Modal */}
+      <SenderHintModal
+        message={activeHintMsg}
+        onClose={() => setActiveHintMsg(null)}
+      />
 
       {/* Share Profile Link Card Modal */}
       <ShareCardModal

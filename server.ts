@@ -45,10 +45,14 @@ async function startServer() {
 
       const metadata = await scrapeLinkMetadata(url);
       return res.json(metadata);
-    } catch (err: any) {
-      console.warn("[LinkPreview API Error]:", err.message || err);
-      return res.status(500).json({ 
-        error: err.message || "Failed to scrape link metadata",
+    } catch (_err: any) {
+      const rawUrl = ((req.query.url as string) || (req.body && req.body.url) || "").toString();
+      const domain = rawUrl.replace(/^https?:\/\//i, "").split("/")[0].replace(/^www\./i, "") || "Link";
+      return res.json({ 
+        url: rawUrl,
+        title: domain,
+        domain: domain,
+        favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`,
         fallback: true 
       });
     }

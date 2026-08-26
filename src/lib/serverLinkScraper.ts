@@ -20,7 +20,8 @@ interface CacheEntry {
 }
 
 const scraperCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours for successful scrapes
+const CACHE_FAILURE_TTL_MS = 30 * 60 * 1000; // 30 minutes for failed / slow endpoints
 const MAX_CACHE_ENTRIES = 1000;
 
 /**
@@ -94,7 +95,7 @@ function resolveUrl(relativeOrAbsolute: string, baseUrl: string): string {
 }
 
 /**
- * Scrapes metadata from target URL
+ * Scrapes metadata from target URL with resilient caching and fast timeout handling
  */
 export async function scrapeLinkMetadata(rawUrl: string): Promise<ScrapedLinkMetadata> {
   const normalized = rawUrl.trim();
@@ -110,8 +111,22 @@ export async function scrapeLinkMetadata(rawUrl: string): Promise<ScrapedLinkMet
     throw new Error("Only http and https protocols are allowed");
   }
 
-  const hostname = parsedUrl.hostname;
+  const hostname = parsedUrl.hostname.toLowerCase();
   const domain = hostname.replace(/^www\./i, "");
+
+  // Fast-path: Own Whisper production / dev domain metadata
+  if (domain === "runflix.name.ng" || domain === "whisper.runflix.name.ng" || domain.includes("europe-west3.run.app")) {
+    const whisperMetadata: ScrapedLinkMetadata = {
+      url: normalized,
+      title: "Whisper - Anonymous Messages",
+      favicon: "https://whisper.runflix.name.ng/favicon-32x32.png",
+      description: "Send and receive end-to-end encrypted secret whispers and confessions anonymously.",
+      image: "https://whisper.runflix.name.ng/og-image.png",
+      domain: domain,
+      siteName: "Whisper",
+    };
+    return whisperMetadata;
+  }
 
   if (isPrivateOrLocalHost(hostname)) {
     throw new Error("Access to local or private network addresses is forbidden");
@@ -131,9 +146,11 @@ export async function scrapeLinkMetadata(rawUrl: string): Promise<ScrapedLinkMet
     favicon: fallbackFavicon,
   };
 
+  let timeoutId: NodeJS.Timeout | undefined;
+
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 second timeout
+    timeoutId = setTimeout(() => controller.abort(), 4500); // 4.5 second timeout
 
     const response = await fetch(normalized, {
       signal: controller.signal,
@@ -145,15 +162,21 @@ export async function scrapeLinkMetadata(rawUrl: string): Promise<ScrapedLinkMet
       redirect: "follow",
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
-      // Return clean fallback on non-200 responses
+      // Store fallback in cache so we don't repeat failed requests immediately
+      scraperCache.set(normalized, {
+        data: defaultResult,
+        expiresAt: Date.now() + CACHE_FAILURE_TTL_MS,
+      });
       return defaultResult;
     }
 
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
+      scraperCache.set(normalized, {
+        data: defaultResult,
+        expiresAt: Date.now() + CACHE_FAILURE_TTL_MS,
+      });
       return defaultResult;
     }
 
@@ -251,8 +274,19 @@ export async function scrapeLinkMetadata(rawUrl: string): Promise<ScrapedLinkMet
     });
 
     return finalData;
-  } catch (err: any) {
-    console.warn(`[Scraper Warning] Failed to scrape ${normalized}:`, err.message || err);
+  } catch (_err) {
+    // Graceful fallback for timeouts, aborts, network DNS errors or unreachable hosts
+    if (scraperCache.size > MAX_CACHE_ENTRIES) {
+      scraperCache.clear();
+    }
+    scraperCache.set(normalized, {
+      data: defaultResult,
+      expiresAt: Date.now() + CACHE_FAILURE_TTL_MS,
+    });
     return defaultResult;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }

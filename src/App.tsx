@@ -149,6 +149,9 @@ export default function App() {
       <RouteManifestSync />
       <Routes>
         <Route path="/admin/unknownofrun" element={<AdminDashboard />} />
+        <Route path="/admin/unknownofrun/*" element={<AdminDashboard />} />
+        <Route path="/admin" element={<Navigate to="/admin/unknownofrun" replace />} />
+        <Route path="/admin/*" element={<Navigate to="/admin/unknownofrun" replace />} />
         <Route path="/maintenance" element={<Maintenance />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Welcome />} />

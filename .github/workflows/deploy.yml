@@ -32,6 +32,6 @@ jobs:
           server: "ftp.lagsipandpaint.name.ng"
           username: "eyuguyaa"
           password: "d6TNIp22dIe#2#"
-          server-dir: "public_html/"
+          server-dir: "whisper/"
           local-dir: "dist/"
           exclude: '[ "**/.git*/**", "**/.git*", "android-chrome-192x192.png", "android-chrome-512x512.png", "apple-touch-icon.png", "favicon-16x16.png", "favicon-32x32.png", "favicon.ico", "site.webmanifest", "og-image.jpg", "og-image.png" ]'

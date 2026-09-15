@@ -26,14 +26,14 @@ jobs:
           cp package.json dist/package.json
           cp .env.example dist/.env.example
 
-      - name: FTP Deploy
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - name: Deploy Node Passenger application over SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
         with:
-          server: "ftp.runflix.name.ng"
+          server: "51.79.17.60"
           username: "gldlgarl"
-          # WARNING: It is highly recommended to store passwords in GitHub Secrets (e.g. ${{ secrets.FTP_PASSWORD }}).
-          # Hardcoding the password here as requested.
           password: "p.Y30c8Y(KdgM3"
-          server-dir: "whisper/"
-          local-dir: "dist/"
-          exclude: '[ "**/.git*/**", "**/.git*", "android-chrome-192x192.png", "android-chrome-512x512.png", "apple-touch-icon.png", "favicon-16x16.png", "favicon-32x32.png", "favicon.ico", "site.webmanifest", "og-image.jpg", "og-image.png" ]'
+          port: 1624
+          sftp_only: true
+          local_path: "./dist/*"
+          remote_path: "whisper"
+          sftpArgs: "-o ConnectTimeout=15 -o StrictHostKeyChecking=no"

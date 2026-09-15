@@ -26,7 +26,8 @@ import {
   Mail,
   Database,
   AlertTriangle,
-  Star
+  Star,
+  KeyRound
 } from "lucide-react";
 import { deleteUser, GoogleAuthProvider, reauthenticateWithPopup } from "firebase/auth";
 import { collection, getDocs, doc, deleteDoc } from "firebase/firestore";
@@ -70,6 +71,7 @@ interface ProfileSettingsViewProps {
   isTestingNotif: boolean;
   notifStatusMsg: { text: string; type: "success" | "error" } | null;
   onOpenRateModal?: () => void;
+  onOpenPinModal?: () => void;
 }
 
 const THEME_OPTIONS = [
@@ -148,7 +150,8 @@ export default function ProfileSettingsView({
   handleSendTestNotification,
   isTestingNotif,
   notifStatusMsg,
-  onOpenRateModal
+  onOpenRateModal,
+  onOpenPinModal
 }: ProfileSettingsViewProps) {
   const [activeCategory, setActiveCategory] = useState<"all" | "profile" | "link" | "app" | "account">("all");
 
@@ -1093,6 +1096,37 @@ export default function ProfileSettingsView({
                 <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400 truncate block">
                   {user?.uid}
                 </span>
+              </div>
+            </div>
+
+            {/* Security Settings Section */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-2">
+              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Security</span>
+              </h3>
+
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+                <div>
+                  <h4 className="text-[11px] font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                    <KeyRound className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Encryption PIN</span>
+                  </h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-xs">
+                    {dbUser?.hasPin 
+                      ? "A 4-digit PIN is currently securing your private encryption key." 
+                      : "Your inbox is unlocked. Set a 4-digit PIN to secure your encryption key."}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onOpenPinModal}
+                  className="shrink-0 w-full sm:w-auto py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-500/20"
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>{dbUser?.hasPin ? "Manage PIN" : "Enable PIN"}</span>
+                </button>
               </div>
             </div>
 

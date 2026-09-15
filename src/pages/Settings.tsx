@@ -7,6 +7,7 @@ import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import ProfileSettingsView from "../components/ProfileSettingsView";
 import PauseLinkModal from "../components/PauseLinkModal";
 import IOSInstallGuideModal from "../components/IOSInstallGuideModal";
+import PinManagementModal from "../components/PinManagementModal";
 import RateAppModal, { snoozeRatingPrompt } from "../components/RateAppModal";
 import { uploadToCloudinary } from "../lib/cloudinary";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
@@ -37,6 +38,7 @@ export default function Settings() {
   // Modals
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [showIOSModal, setShowIOSModal] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
 
   // PWA & Updates
   const pwa = usePWAInstall();
@@ -269,9 +271,15 @@ export default function Settings() {
         isTestingNotif={isTestingNotif}
         notifStatusMsg={notifStatusMsg}
         onOpenRateModal={() => setShowRateModal(true)}
+        onOpenPinModal={() => setShowPinModal(true)}
       />
 
       {/* Modals */}
+      <PinManagementModal 
+        isOpen={showPinModal} 
+        onClose={() => setShowPinModal(false)} 
+      />
+
       <PauseLinkModal
         isOpen={showPauseModal}
         onClose={() => setShowPauseModal(false)}

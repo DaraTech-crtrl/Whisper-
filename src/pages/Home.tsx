@@ -13,7 +13,7 @@ import {
   sendPasswordResetEmail,
   signOut
 } from "firebase/auth";
-import { doc, setDoc, query, collection, where, getDocs, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, query, collection, where, getDocs, serverTimestamp, updateDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { useAuthStore } from "../lib/store";
 import { generateKeyPair, wrapPrivateKey, unwrapPrivateKey } from "../lib/crypto";
@@ -36,6 +36,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import CustomPasswordReset from "../components/CustomPasswordReset";
+import PinInput from "../components/PinInput";
 
 export default function Home() {
   const { 
@@ -206,16 +207,30 @@ export default function Home() {
     }
   };
 
-  const handleSetup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    // Auto-unlock if user opted out of PIN
+    if (user && dbUser && dbUser.hasPin === false && !privateKey) {
+      const unwrapped = unwrapPrivateKey(dbUser.encryptedPrivateKey, "default-no-pin");
+      if (unwrapped) {
+        setSessionCreatedAt(Date.now());
+        setPrivateKey(unwrapped);
+        navigate("/dashboard");
+      }
+    }
+  }, [user, dbUser, privateKey, navigate, setSessionCreatedAt, setPrivateKey]);
+
+  const handleSetup = async (e?: React.FormEvent, skipPin: boolean = false, directPin?: string) => {
+    if (e) e.preventDefault();
     setError("");
     
     if (username.length < 3) {
       setError("Username must be at least 3 characters.");
       return;
     }
-    if (pin.length < 4) {
-      setError("PIN must be at least 4 digits.");
+    
+    const pinToUse = directPin || pin;
+    if (!skipPin && pinToUse.length < 4) {
+      setError("PIN must be 4 digits.");
       return;
     }
 
@@ -231,7 +246,8 @@ export default function Home() {
       }
 
       const keys = await generateKeyPair();
-      const encryptedPrivKey = wrapPrivateKey(keys.privateKey, pin);
+      const encryptionPin = skipPin ? "default-no-pin" : pinToUse;
+      const encryptedPrivKey = wrapPrivateKey(keys.privateKey, encryptionPin);
 
       await setDoc(doc(db, "users", user!.uid), {
         uid: user!.uid,
@@ -241,6 +257,7 @@ export default function Home() {
         emailLower: (user!.email || "").toLowerCase(),
         publicKey: keys.publicKey,
         encryptedPrivateKey: encryptedPrivKey,
+        hasPin: !skipPin,
         salt: "v1",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -257,14 +274,18 @@ export default function Home() {
     }
   };
 
-  const handleUnlock = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUnlock = async (e?: React.FormEvent, directPin?: string) => {
+    if (e) e.preventDefault();
     if (!dbUser) return;
+    
+    const pinToUse = directPin || pin;
+    if (pinToUse.length < 4) return;
+
     setError("");
     setIsLoading(true);
 
     try {
-      const unwrapped = unwrapPrivateKey(dbUser.encryptedPrivateKey, pin);
+      const unwrapped = unwrapPrivateKey(dbUser.encryptedPrivateKey, pinToUse);
       if (unwrapped) {
         setSessionCreatedAt(Date.now());
         setPrivateKey(unwrapped);
@@ -548,23 +569,25 @@ export default function Home() {
             </p>
 
             <form onSubmit={handleUnlock} className="w-full space-y-4">
-              <div className="relative w-full">
-                <input 
-                  id="home-unlock-pin"
-                  type={showPin ? "text" : "password"}
-                  value={pin}
-                  onChange={e => setPin(e.target.value)}
-                  placeholder="Enter your PIN"
-                  autoFocus
-                  className="w-full text-center text-base font-mono tracking-widest bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3.5 px-12 outline-none focus:border-indigo-500 transition-colors shadow-inner"
+              <div className="w-full py-2 flex flex-col items-center">
+                <PinInput 
+                  length={4} 
+                  value={pin} 
+                  onChange={setPin} 
+                  isPassword={!showPin} 
+                  disabled={isLoading}
+                  onComplete={(val) => handleUnlock(undefined, val)}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPin(!showPin)}
-                  className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-0.5"
-                >
-                  {showPin ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
+                <div className="w-full flex justify-end mt-3 px-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(!showPin)}
+                    className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-500 transition-colors"
+                  >
+                    {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showPin ? "Hide PIN" : "Show PIN"}
+                  </button>
+                </div>
               </div>
 
               {error && (
@@ -640,27 +663,40 @@ export default function Home() {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5 pl-1">
-                  Create Secret PIN (4+ digits)
+                  Create Secret PIN (4 digits)
                 </label>
-                <div className="relative w-full">
-                  <KeyRound className="absolute left-3.5 top-3.5 w-5 h-5 text-slate-400" />
-                  <input 
-                    id="home-setup-pin"
-                    type={showPin ? "text" : "password"}
-                    value={pin}
-                    onChange={e => setPin(e.target.value)}
-                    placeholder="Enter a secure PIN"
-                    className="w-full text-base bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-3 pl-11 pr-12 outline-none focus:border-indigo-500 transition-colors"
+                <div className="w-full py-2">
+                  <PinInput 
+                    length={4} 
+                    value={pin} 
+                    onChange={setPin} 
+                    isPassword={!showPin} 
+                    disabled={isLoading}
+                    onComplete={(val) => {
+                      if (username.length >= 3) {
+                        handleSetup(undefined, false, val);
+                      }
+                    }}
                   />
+                </div>
+                <div className="w-full flex justify-between items-center mt-1 px-1">
                   <button
                     type="button"
                     onClick={() => setShowPin(!showPin)}
-                    className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-0.5"
+                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-indigo-500 transition-colors"
                   >
-                    {showPin ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    {showPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    {showPin ? "Hide" : "Show"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleSetup(e, true)}
+                    className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline underline-offset-2 transition-colors"
+                  >
+                    Skip for now
                   </button>
                 </div>
-                <div className="flex items-start gap-1.5 mt-2 text-[11px] text-slate-400 pl-1">
+                <div className="flex items-start gap-1.5 mt-3 text-[11px] text-slate-400 pl-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
                   <span>This PIN encrypts your private key in the cloud. You will use it to unlock your messages.</span>
                 </div>

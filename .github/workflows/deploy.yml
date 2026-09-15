@@ -34,6 +34,7 @@ jobs:
           password: "p.Y30c8Y(KdgM3"
           port: 1624
           sftp_only: true
-          local_path: "./dist/*"
+          # Note: "./dist/*" skips hidden files. We use multiple patterns to get everything including .htaccess
+          local_path: "./dist/*,./dist/.[!.]*"
           remote_path: "whisper"
           sftpArgs: "-o ConnectTimeout=15 -o StrictHostKeyChecking=no"

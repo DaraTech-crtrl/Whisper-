@@ -174,6 +174,17 @@ export default function Home() {
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
+
+      // In mobile and PWA environments, signInWithPopup often fails to return credentials 
+      // due to ITP or popup restrictions. Use redirect instead.
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isStandalone || isMobile) {
+        await signInWithRedirect(auth, provider);
+        return; // Will reload the page
+      }
+
       await signInWithPopup(auth, provider);
       setSessionCreatedAt(Date.now());
     } catch (err: any) {

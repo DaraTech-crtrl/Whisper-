@@ -29,11 +29,11 @@ jobs:
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          server: "ftp.lagsipandpaint.name.ng"
-          username: "eyuguyaa"
+          server: "ftp.runflix.name.ng"
+          username: "gldlgarl"
           # WARNING: It is highly recommended to store passwords in GitHub Secrets (e.g. ${{ secrets.FTP_PASSWORD }}).
           # Hardcoding the password here as requested.
-          password: "d6TNIp22dIe#2#"
+          password: "p.Y30c8Y(KdgM3"
           server-dir: "whisper/"
           local-dir: "dist/"
           exclude: '[ "**/.git*/**", "**/.git*", "android-chrome-192x192.png", "android-chrome-512x512.png", "apple-touch-icon.png", "favicon-16x16.png", "favicon-32x32.png", "favicon.ico", "site.webmanifest", "og-image.jpg", "og-image.png" ]'

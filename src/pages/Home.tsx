@@ -292,12 +292,19 @@ export default function Home() {
         navigate("/dashboard");
       } else {
         setError("Incorrect PIN. Please try again.");
+        setTimeout(() => setPin(""), 400); // Clear pin after shake animation
       }
     } catch (err) {
       setError("Incorrect PIN. Please try again.");
+      setTimeout(() => setPin(""), 400);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handlePinChange = (val: string) => {
+    setPin(val);
+    if (error) setError("");
   };
 
   const handleSignOut = async () => {
@@ -573,9 +580,10 @@ export default function Home() {
                 <PinInput 
                   length={4} 
                   value={pin} 
-                  onChange={setPin} 
+                  onChange={handlePinChange} 
                   isPassword={!showPin} 
                   disabled={isLoading}
+                  isError={!!error}
                   onComplete={(val) => handleUnlock(undefined, val)}
                 />
                 <div className="w-full flex justify-end mt-3 px-2">

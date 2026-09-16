@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 
 interface PinInputProps {
   length?: number;
@@ -7,9 +8,10 @@ interface PinInputProps {
   disabled?: boolean;
   isPassword?: boolean;
   onComplete?: (value: string) => void;
+  isError?: boolean;
 }
 
-export default function PinInput({ length = 4, value, onChange, disabled = false, isPassword = false, onComplete }: PinInputProps) {
+export default function PinInput({ length = 4, value, onChange, disabled = false, isPassword = false, onComplete, isError = false }: PinInputProps) {
   const [digits, setDigits] = useState<string[]>(Array(length).fill(''));
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -91,7 +93,11 @@ export default function PinInput({ length = 4, value, onChange, disabled = false
   };
 
   return (
-    <div className="flex items-center justify-center gap-2 sm:gap-3 w-full">
+    <motion.div 
+      className="flex items-center justify-center gap-2 sm:gap-3 w-full"
+      animate={isError ? { x: [-10, 10, -10, 10, -5, 5, 0] } : { x: 0 }}
+      transition={{ duration: 0.4 }}
+    >
       {digits.map((digit, index) => (
         <input
           key={index}
@@ -105,9 +111,13 @@ export default function PinInput({ length = 4, value, onChange, disabled = false
           onKeyDown={(e) => handleKeyDown(index, e)}
           onPaste={handlePaste}
           disabled={disabled}
-          className="w-12 h-14 sm:w-14 sm:h-16 text-center text-xl sm:text-2xl font-bold bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all disabled:opacity-50"
+          className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-xl sm:text-2xl font-bold bg-slate-100 dark:bg-slate-900 border rounded-xl outline-none transition-all disabled:opacity-50 ${
+            isError 
+              ? 'border-rose-500 ring-2 ring-rose-500/20' 
+              : 'border-slate-200 dark:border-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20'
+          }`}
         />
       ))}
-    </div>
+    </motion.div>
   );
 }

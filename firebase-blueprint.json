@@ -13,6 +13,7 @@
         "messageExpiryActivatedAt": { "type": "number" },
         "onboardingCompleted": { "type": "boolean" },
         "notificationsEnabled": { "type": "boolean" },
+        "allowTimeCapsule": { "type": "boolean" },
         "fcmToken": { "type": "string" },
         "fcmTokens": { "type": "array" },
         "publicKey": { "type": "string" },

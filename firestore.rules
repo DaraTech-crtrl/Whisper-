@@ -67,6 +67,9 @@ service cloud.firestore {
         && (
           !('isLocked' in data) || (data.isLocked is bool)
         )
+        && (
+          !('allowTimeCapsule' in data) || (data.allowTimeCapsule is bool)
+        )
     }
 
     match /users/{userId} {

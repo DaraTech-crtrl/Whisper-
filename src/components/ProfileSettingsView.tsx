@@ -27,6 +27,7 @@ import {
   Database,
   AlertTriangle,
   Star,
+  Hourglass,
   KeyRound
 } from "lucide-react";
 import { deleteUser, GoogleAuthProvider, reauthenticateWithPopup } from "firebase/auth";
@@ -51,6 +52,9 @@ interface ProfileSettingsViewProps {
   setTheme: (val: string) => void;
   messageExpiryHours: number;
   setMessageExpiryHours: (val: number) => void;
+  allowTimeCapsule?: boolean;
+  setAllowTimeCapsule?: (val: boolean) => void;
+  onToggleTimeCapsule?: (enabled: boolean) => void;
   isUpdatingProfile: boolean;
   profileMessage: { text: string; type: string };
   handleUpdateProfile: (e: React.FormEvent) => void;
@@ -132,6 +136,9 @@ export default function ProfileSettingsView({
   setTheme,
   messageExpiryHours,
   setMessageExpiryHours,
+  allowTimeCapsule = false,
+  setAllowTimeCapsule,
+  onToggleTimeCapsule,
   isUpdatingProfile,
   profileMessage,
   handleUpdateProfile,
@@ -361,7 +368,7 @@ export default function ProfileSettingsView({
             )}
           >
             <Hand className="w-3.5 h-3.5" />
-            <span>Link & Expiry</span>
+            <span>Link & Capsule</span>
             {isLinkPaused && (
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
             )}
@@ -607,6 +614,63 @@ export default function ProfileSettingsView({
               </div>
             </div>
 
+            {/* Time Capsule Toggle in Profile Form */}
+            <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Hourglass className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      Time Capsule Delivery
+                    </span>
+                    <span className={cn(
+                      "text-[9px] font-bold px-1.5 py-0.2 rounded-full",
+                      allowTimeCapsule 
+                        ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400"
+                        : "bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                    )}>
+                      {allowTimeCapsule ? "ON" : "OFF (Default)"}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    {allowTimeCapsule 
+                      ? "Senders can lock & delay whispers on your public link." 
+                      : "Always off by default. Senders cannot delay whispers on your public link."}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={allowTimeCapsule}
+                onClick={() => {
+                  triggerHaptic("light");
+                  const nextVal = !allowTimeCapsule;
+                  if (onToggleTimeCapsule) {
+                    onToggleTimeCapsule(nextVal);
+                  } else if (setAllowTimeCapsule) {
+                    setAllowTimeCapsule(nextVal);
+                  }
+                }}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                  allowTimeCapsule ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700"
+                )}
+                title={allowTimeCapsule ? "Disable Time Capsule" : "Enable Time Capsule"}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out",
+                    allowTimeCapsule ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </button>
+            </div>
+
             {profileMessage.text && (
               <div className={cn(
                 "p-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5",
@@ -744,6 +808,104 @@ export default function ProfileSettingsView({
               className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-2xs cursor-pointer disabled:opacity-50"
             >
               {isUpdatingProfile ? "Saving..." : "Save Auto-Archive Settings"}
+            </button>
+          </div>
+
+          {/* Time Capsule Delivery Card */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4.5 shadow-2xs space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Hourglass className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Time Capsule Delivery
+                    </h2>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                      Public Link
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                    Allow or disable time-locked messages on your public profile link.
+                  </p>
+                </div>
+              </div>
+
+              {/* Master Toggle Switch */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={allowTimeCapsule}
+                onClick={() => {
+                  triggerHaptic("light");
+                  const nextVal = !allowTimeCapsule;
+                  if (onToggleTimeCapsule) {
+                    onToggleTimeCapsule(nextVal);
+                  } else if (setAllowTimeCapsule) {
+                    setAllowTimeCapsule(nextVal);
+                  }
+                }}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2",
+                  allowTimeCapsule ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700"
+                )}
+                title={allowTimeCapsule ? "Disable Time Capsule" : "Enable Time Capsule"}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out",
+                    allowTimeCapsule ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </button>
+            </div>
+
+            {/* Status Information Box */}
+            <div className={cn(
+              "p-3 rounded-xl border transition-all text-xs space-y-1.5",
+              allowTimeCapsule 
+                ? "bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-200/80 dark:border-indigo-800/60"
+                : "bg-slate-50 dark:bg-slate-950 border-slate-200/80 dark:border-slate-800"
+            )}>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <span>Current Status:</span>
+                  {allowTimeCapsule ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Enabled on Public Link
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300/80 dark:border-slate-700">
+                      <Lock className="w-3 h-3" />
+                      Always Off (Default)
+                    </span>
+                  )}
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {allowTimeCapsule ? "Visible to Senders" : "Hidden from Senders"}
+                </span>
+              </div>
+
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+                {allowTimeCapsule ? (
+                  "Senders on your public profile link can pick an unlock date and time. Locked whispers remain encrypted until that time arrives."
+                ) : (
+                  "Time capsule delivery is turned off on your public profile link. Senders cannot lock or delay whispers — all incoming messages arrive and unlock immediately."
+                )}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleUpdateProfile}
+              disabled={isUpdatingProfile}
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+            >
+              {isUpdatingProfile ? "Saving..." : "Save Time Capsule Setting"}
             </button>
           </div>
         </div>

@@ -136,7 +136,7 @@ export default function PublicProfile() {
         ...(cleanHint ? { senderHint: cleanHint } : {})
       };
       
-      if (unlocksAtData) {
+      if (profile?.allowTimeCapsule === true && unlocksAtData) {
         const d = new Date(unlocksAtData);
         if (d > new Date()) {
           payloadData.unlocksAt = Timestamp.fromDate(d);
@@ -346,26 +346,28 @@ export default function PublicProfile() {
                 ))}
               </div>
 
-              {/* Time Capsule Delivery */}
-              <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800">
-                <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  <Watch className="w-3.5 h-3.5 text-indigo-500" />
-                  Time-Capsule Delivery (Optional)
-                </label>
-                <input 
-                  id="profile-time-capsule-input"
-                  type="datetime-local" 
-                  value={unlocksAtData}
-                  onChange={(e) => setUnlocksAtData(e.target.value)}
-                  min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500 text-slate-900 dark:text-slate-100"
-                />
-                {unlocksAtData && (
-                   <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2 font-medium">
-                     Message will be locked until {new Date(unlocksAtData).toLocaleString()}.
-                   </p>
-                )}
-              </div>
+              {/* Time Capsule Delivery (Only shown if enabled by the recipient; always OFF by default) */}
+              {profile?.allowTimeCapsule === true && (
+                <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                    <Watch className="w-3.5 h-3.5 text-indigo-500" />
+                    Time-Capsule Delivery (Optional)
+                  </label>
+                  <input 
+                    id="profile-time-capsule-input"
+                    type="datetime-local" 
+                    value={unlocksAtData}
+                    onChange={(e) => setUnlocksAtData(e.target.value)}
+                    min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500 text-slate-900 dark:text-slate-100"
+                  />
+                  {unlocksAtData && (
+                     <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2 font-medium">
+                       Message will be locked until {new Date(unlocksAtData).toLocaleString()}.
+                     </p>
+                  )}
+                </div>
+              )}
 
               {error && (
                 <p className="text-rose-600 dark:text-rose-400 text-xs font-medium text-center bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 p-2.5 rounded-xl">{error}</p>

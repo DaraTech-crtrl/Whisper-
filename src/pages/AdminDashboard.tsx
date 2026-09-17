@@ -93,6 +93,7 @@ export interface UserProfileData {
   onboardingCompleted?: boolean;
   isLocked?: boolean;
   messageExpiryHours?: number;
+  allowTimeCapsule?: boolean;
 }
 
 export interface SystemSettingsData {
@@ -2916,6 +2917,22 @@ export default function AdminDashboard() {
                   <div className="text-slate-500 dark:text-slate-400 text-[11px] truncate">
                     {selectedUser.publicKey ? selectedUser.publicKey : "No key pair generated"}
                   </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="text-slate-400 text-[10px] block">Time Capsule Public Feature</span>
+                    <div className="text-slate-900 dark:text-slate-200 font-semibold text-xs mt-0.5">
+                      {selectedUser.allowTimeCapsule === true ? "Enabled by User" : "Disabled (Always Off Default)"}
+                    </div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    selectedUser.allowTimeCapsule === true 
+                      ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                      : "bg-slate-200/80 dark:bg-slate-800 text-slate-500"
+                  }`}>
+                    {selectedUser.allowTimeCapsule === true ? "Active" : "Off"}
+                  </span>
                 </div>
               </div>
 

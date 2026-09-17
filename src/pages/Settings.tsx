@@ -31,6 +31,8 @@ export default function Settings() {
   const [avatarUrl, setAvatarUrl] = useState<string>(dbUser?.photoURL || dbUser?.avatarUrl || "");
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [messageExpiryHours, setMessageExpiryHours] = useState<number>(dbUser?.messageExpiryHours || 0);
+  // Time capsule is always OFF by default unless explicitly enabled by the user
+  const [allowTimeCapsule, setAllowTimeCapsule] = useState<boolean>(dbUser?.allowTimeCapsule === true);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState({ text: "", type: "" });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +61,11 @@ export default function Settings() {
       if (dbUser.theme && theme !== dbUser.theme) setTheme(dbUser.theme);
       if (dbUser.messageExpiryHours !== undefined && messageExpiryHours !== dbUser.messageExpiryHours) {
         setMessageExpiryHours(dbUser.messageExpiryHours);
+      }
+      if (dbUser.allowTimeCapsule !== undefined) {
+        setAllowTimeCapsule(dbUser.allowTimeCapsule === true);
+      } else {
+        setAllowTimeCapsule(false);
       }
     }
   }, [dbUser]);
@@ -148,6 +155,7 @@ export default function Settings() {
         avatarUrl: avatarUrl || null,
         theme: theme,
         messageExpiryHours: newExpiry,
+        allowTimeCapsule: allowTimeCapsule === true,
         updatedAt: serverTimestamp()
       };
 
@@ -163,6 +171,30 @@ export default function Settings() {
       setProfileMessage({ text: getFriendlyErrorMessage(err), type: "error" });
     } finally {
       setIsUpdatingProfile(false);
+    }
+  };
+
+  const handleToggleTimeCapsule = async (enabled: boolean) => {
+    setAllowTimeCapsule(enabled);
+    setProfileMessage({ text: "", type: "" });
+    try {
+      if (user?.uid) {
+        await updateDoc(doc(db, "users", user.uid), {
+          allowTimeCapsule: enabled,
+          updatedAt: serverTimestamp()
+        });
+        setProfileMessage({
+          text: enabled 
+            ? "Time capsule whispers enabled on your public link!" 
+            : "Time capsule whispers disabled (always off) on your public link.",
+          type: "success"
+        });
+      }
+    } catch (err: any) {
+      console.error("Failed to toggle time capsule:", err);
+      // Revert local state on error
+      setAllowTimeCapsule(!enabled);
+      setProfileMessage({ text: getFriendlyErrorMessage(err), type: "error" });
     }
   };
 
@@ -252,6 +284,9 @@ export default function Settings() {
         setTheme={setTheme}
         messageExpiryHours={messageExpiryHours}
         setMessageExpiryHours={setMessageExpiryHours}
+        allowTimeCapsule={allowTimeCapsule}
+        setAllowTimeCapsule={setAllowTimeCapsule}
+        onToggleTimeCapsule={handleToggleTimeCapsule}
         isUpdatingProfile={isUpdatingProfile}
         profileMessage={profileMessage}
         handleUpdateProfile={handleUpdateProfile}

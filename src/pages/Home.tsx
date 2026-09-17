@@ -275,6 +275,7 @@ export default function Home() {
         publicKey: keys.publicKey,
         encryptedPrivateKey: encryptedPrivKey,
         hasPin: !skipPin,
+        allowTimeCapsule: false,
         salt: "v1",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),

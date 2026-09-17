@@ -555,15 +555,19 @@ export default function AdminDashboard() {
     setActionUserUid(userToDelete.uid);
 
     try {
-      // 1. Delete user's messages subcollection
-      const messagesRef = collection(db, "users", userToDelete.uid, "messages");
-      const messagesSnap = await getDocs(messagesRef);
-      for (const msgDoc of messagesSnap.docs) {
-        try {
-          await deleteDoc(doc(db, "users", userToDelete.uid, "messages", msgDoc.id));
-        } catch (e) {
-          console.warn("Could not delete message doc:", msgDoc.id, e);
+      // 1. Delete user's messages subcollection (safe cleanup)
+      try {
+        const messagesRef = collection(db, "users", userToDelete.uid, "messages");
+        const messagesSnap = await getDocs(messagesRef);
+        for (const msgDoc of messagesSnap.docs) {
+          try {
+            await deleteDoc(doc(db, "users", userToDelete.uid, "messages", msgDoc.id));
+          } catch (e) {
+            console.warn("Could not delete message doc:", msgDoc.id, e);
+          }
         }
+      } catch (msgErr) {
+        console.warn("Could not fetch user messages subcollection:", msgErr);
       }
 
       // 2. Delete user profile document

@@ -5,12 +5,6 @@ import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import webpush from "web-push";
 import { scrapeLinkMetadata } from "./src/lib/serverLinkScraper";
-import { 
-  getPublicUserProfile, 
-  generateOgImageBuffer, 
-  injectProfileMetadata, 
-  getModeInfo 
-} from "./src/lib/serverOgHelper";
 
 dotenv.config();
 
@@ -168,87 +162,20 @@ async function startServer() {
     }
   });
 
-  // Dynamic OpenGraph Social Card Image Generator (PNG 1200x630)
-  app.get(["/api/og-image/:username.png", "/api/og-image/:username"], async (req, res) => {
-    try {
-      const rawParam = req.params.username || "";
-      const cleanUsername = rawParam.replace(/\.png$/i, "").trim();
-      
-      const profile = await getPublicUserProfile(cleanUsername);
-      const mode = (req.query.m as string) || "Whisper";
-      const imageBuffer = await generateOgImageBuffer(cleanUsername, profile, mode);
-
-      res.setHeader("Content-Type", "image/png");
-      res.setHeader("Cache-Control", "public, max-age=1800, s-maxage=86400, stale-while-revalidate=86400");
-      return res.send(imageBuffer);
-    } catch (err: any) {
-      console.error("[OG Image Generation Error]:", err);
-      return res.status(500).json({ error: "Failed to generate OG image" });
-    }
-  });
-
-  const PUBLIC_PROFILE_REGEX = /^\/(u|confess|about|ask|opinion|crush|compliment|roast)\/([a-zA-Z0-9_.-]+)\/?$/i;
-
-  const handlePublicProfileRoute = async (req: express.Request, rawHtml: string) => {
-    const match = req.path.match(PUBLIC_PROFILE_REGEX);
-    if (!match) return null;
-
-    const modePrefix = match[1].toLowerCase();
-    const username = match[2];
-
-    const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-    const host = req.headers["x-forwarded-host"] || req.headers.host || "whisper.runflix.name.ng";
-    const baseUrl = `${proto}://${host}`;
-
-    const profile = await getPublicUserProfile(username);
-    return injectProfileMetadata(rawHtml, {
-      username,
-      profile,
-      modePrefix,
-      baseUrl,
-      path: req.path
-    });
-  };
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
-
-    // Intercept public profile routes in dev before SPA fallback
-    app.get(PUBLIC_PROFILE_REGEX, async (req, res, next) => {
-      try {
-        const indexPath = path.join(process.cwd(), "index.html");
-        if (fs.existsSync(indexPath)) {
-          let html = fs.readFileSync(indexPath, "utf-8");
-          const injected = await handlePublicProfileRoute(req, html);
-          if (injected) {
-            const transformed = await vite.transformIndexHtml(req.originalUrl, injected);
-            res.setHeader("Content-Type", "text/html; charset=utf-8");
-            return res.send(transformed);
-          }
-        }
-      } catch (err) {
-        console.error("[Dev Public Profile Interceptor Error]:", err);
-      }
-      next();
-    });
-
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-
-    app.get("*", async (req, res) => {
+    app.get("*", (req, res) => {
       const indexPath = path.join(distPath, "index.html");
-      if (!fs.existsSync(indexPath)) {
-        return res.sendFile(indexPath);
-      }
-
       const isAdmin = req.path.startsWith("/admin");
-      if (isAdmin) {
+      if (isAdmin && fs.existsSync(indexPath)) {
         try {
           let html = fs.readFileSync(indexPath, "utf-8");
           html = html
@@ -264,21 +191,6 @@ async function startServer() {
           // fallback
         }
       }
-
-      // Check if this is a public profile route
-      if (PUBLIC_PROFILE_REGEX.test(req.path)) {
-        try {
-          let html = fs.readFileSync(indexPath, "utf-8");
-          const injected = await handlePublicProfileRoute(req, html);
-          if (injected) {
-            res.setHeader("Content-Type", "text/html; charset=utf-8");
-            return res.send(injected);
-          }
-        } catch (err) {
-          console.error("[Prod Public Profile Interceptor Error]:", err);
-        }
-      }
-
       res.sendFile(indexPath);
     });
   }

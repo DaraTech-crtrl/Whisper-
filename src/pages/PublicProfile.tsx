@@ -5,7 +5,7 @@ import { db } from "../lib/firebase";
 import { encryptMessage } from "../lib/crypto";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { captureSenderHint } from "../lib/senderHint";
-import { Send, CheckCircle2, AlertTriangle, Lock, Watch, Clock, RefreshCw } from "lucide-react";
+import { Send, CheckCircle2, AlertTriangle, Lock, Award, Watch, Clock, RefreshCw } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
 import LoadingScreen from "../components/LoadingScreen";
@@ -37,6 +37,7 @@ export default function PublicProfile() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [anonId, setAnonId] = useState<string>("");
+  const [reputation, setReputation] = useState<number | null>(null);
 
   const [unlocksAtData, setUnlocksAtData] = useState<string>("");
 
@@ -50,46 +51,34 @@ export default function PublicProfile() {
       localStorage.setItem('anonId', storedId);
     }
     setAnonId(storedId);
+
+    const fetchReputation = async () => {
+      try {
+        const repDoc = await getDoc(doc(db, "anonymousUsers", storedId as string));
+        if (repDoc.exists()) {
+          setReputation(repDoc.data().reputation);
+        } else {
+          await setDoc(doc(db, "anonymousUsers", storedId as string), { reputation: 0 });
+          setReputation(0);
+        }
+      } catch (err) {
+        console.error("Failed to fetch reputation", err);
+      }
+    };
+    fetchReputation();
   }, []);
 
   useEffect(() => {
-    const targetName = profile?.displayName || (username ? `@${username}` : "User");
-    const targetHandle = username ? `@${username}` : "";
-    const pageTitle = profile 
-      ? `Send an anonymous whisper to ${targetName} (${targetHandle}) — Whisper`
-      : username 
-        ? `${currentMode.icon} ${currentMode.name} — @${username} on Whisper`
-        : `${currentMode.name} — Whisper Anonymous Messaging`;
-    
-    document.title = pageTitle;
-
-    // Dynamically update meta tags in DOM
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) ogTitle.setAttribute("content", pageTitle);
-    
-    const twitterTitle = document.querySelector('meta[name="twitter:title"]');
-    if (twitterTitle) twitterTitle.setAttribute("content", pageTitle);
-
-    const descText = profile?.bio?.trim() || `Send an anonymous whisper to ${targetName}. 100% private, anonymous & end-to-end encrypted.`;
-    const ogDesc = document.querySelector('meta[property="og:description"]');
-    if (ogDesc) ogDesc.setAttribute("content", descText);
-    const metaDesc = document.querySelector('meta[name="description"]');
-    if (metaDesc) metaDesc.setAttribute("content", descText);
-    const twitterDesc = document.querySelector('meta[name="twitter:description"]');
-    if (twitterDesc) twitterDesc.setAttribute("content", descText);
-
-    if (profile?.photoURL || profile?.avatarUrl) {
-      const avatar = profile.photoURL || profile.avatarUrl;
-      const ogImg = document.querySelector('meta[property="og:image"]');
-      if (ogImg) ogImg.setAttribute("content", avatar);
-      const twImg = document.querySelector('meta[name="twitter:image"]');
-      if (twImg) twImg.setAttribute("content", avatar);
+    if (username) {
+      document.title = `${currentMode.icon} ${currentMode.name} — @${username} on Whisper`;
+    } else {
+      document.title = `${currentMode.name} — Whisper Anonymous Messaging`;
     }
 
     return () => {
       document.title = "Whisper — Anonymous Encrypted Messaging";
     };
-  }, [username, currentMode, profile]);
+  }, [username, currentMode]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -216,6 +205,13 @@ export default function PublicProfile() {
   return (
     <div className="min-h-[100dvh] w-full pb-16 flex flex-col items-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       <div className="w-full max-w-md px-4 relative flex flex-col mt-8 sm:mt-12 z-10">
+        {reputation !== null && reputation !== 0 && (
+          <div className="self-end mb-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-bold shadow-xs">
+            <Award className="w-4 h-4 text-indigo-500" />
+            Reputation: {reputation > 0 ? '+' : ''}{reputation}
+          </div>
+        )}
+
       <AnimatePresence mode="wait">
         {!sent ? (
           <motion.div 

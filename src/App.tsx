@@ -51,10 +51,9 @@ function RouteManifestSync() {
     canonicalLink.href = `${window.location.origin}${targetPath}`;
 
     // 4. Document Title
-    const isPublicProfile = /^\/(u|confess|about|ask|opinion|crush|compliment|roast)\/[^/]+/i.test(location.pathname);
     if (isAdmin) {
       document.title = "Whisper Admin Console";
-    } else if (!isPublicProfile) {
+    } else {
       document.title = "Whisper — Anonymous Encrypted Messaging";
     }
   }, [location.pathname]);

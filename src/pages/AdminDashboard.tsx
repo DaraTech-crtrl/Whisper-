@@ -54,7 +54,9 @@ import {
   MessageSquare,
   Terminal,
   Bug,
-  FileText
+  FileText,
+  LayoutGrid,
+  List
 } from "lucide-react";
 import { 
   collection, 
@@ -169,6 +171,14 @@ export default function AdminDashboard() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [userFilter, setUserFilter] = useState<"all" | "onboarded" | "locked" | "hasEmail">("all");
+  const [userViewMode, setUserViewMode] = useState<"list" | "cards">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("whisper_admin_user_view_mode");
+      if (saved === "list" || saved === "cards") return saved;
+      if (window.innerWidth < 768) return "cards";
+    }
+    return "list";
+  });
   const [selectedUser, setSelectedUser] = useState<UserProfileData | null>(null);
   const [userToDeleteConfirm, setUserToDeleteConfirm] = useState<UserProfileData | null>(null);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
@@ -576,6 +586,14 @@ export default function AdminDashboard() {
     } finally {
       setIsDeletingUser(false);
       setActionUserUid(null);
+    }
+  };
+
+  // User View Mode Toggle (List vs Cards)
+  const handleSetUserViewMode = (mode: "list" | "cards") => {
+    setUserViewMode(mode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("whisper_admin_user_view_mode", mode);
     }
   };
 
@@ -1404,59 +1422,92 @@ export default function AdminDashboard() {
           {activeTab === "users" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
               
-              {/* Search & Filter Header */}
-              <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-center justify-between gap-4 ${cardClasses}`}>
+              {/* Search, Filter & View Toggle Header */}
+              <div className={`p-4 rounded-3xl border flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 ${cardClasses}`}>
                 
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  <input
-                    type="text"
-                    value={userSearchQuery}
-                    onChange={(e) => setUserSearchQuery(e.target.value)}
-                    placeholder="Search handle, email, UID..."
-                    className={`w-full pl-10 pr-4 py-2 border focus:border-indigo-600 rounded-2xl text-xs outline-none transition-all ${
-                      isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
-                    }`}
-                  />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      placeholder="Search handle, email, UID..."
+                      className={`w-full pl-10 pr-4 py-2 border focus:border-indigo-600 rounded-2xl text-xs outline-none transition-all ${
+                        isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                      }`}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+                    {[
+                      { id: "all", label: `All (${totalUsersCount})` },
+                      { id: "onboarded", label: `Onboarded (${onboardedCount})` },
+                      { id: "hasEmail", label: `Has Email (${usersWithEmailCount})` },
+                      { id: "locked", label: `Suspended (${lockedUsersCount})` },
+                    ].map(filter => (
+                      <button
+                        key={filter.id}
+                        onClick={() => setUserFilter(filter.id as any)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                          userFilter === filter.id
+                            ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                            : "bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-                  {[
-                    { id: "all", label: `All (${totalUsersCount})` },
-                    { id: "onboarded", label: `Onboarded (${onboardedCount})` },
-                    { id: "hasEmail", label: `Has Email (${usersWithEmailCount})` },
-                    { id: "locked", label: `Suspended (${lockedUsersCount})` },
-                  ].map(filter => (
+                {/* View Mode Toggle */}
+                <div className="flex items-center justify-end shrink-0">
+                  <div className="inline-flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-800">
                     <button
-                      key={filter.id}
-                      onClick={() => setUserFilter(filter.id as any)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
-                        userFilter === filter.id
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                          : "bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
+                      onClick={() => handleSetUserViewMode("list")}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                        userViewMode === "list"
+                          ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                       }`}
+                      title="Table List View"
                     >
-                      {filter.label}
+                      <List className="w-3.5 h-3.5" />
+                      <span>List</span>
                     </button>
-                  ))}
+                    <button
+                      onClick={() => handleSetUserViewMode("cards")}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                        userViewMode === "cards"
+                          ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                      }`}
+                      title="Card Mode (Optimized for Mobile)"
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      <span>Cards</span>
+                    </button>
+                  </div>
                 </div>
 
               </div>
 
-              {/* Users Table */}
-              <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
-                {isLoadingUsers ? (
-                  <div className="p-12 text-center text-slate-400 space-y-3">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
-                    <p className="text-xs">Fetching users from Firestore...</p>
-                  </div>
-                ) : filteredUsers.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400 space-y-2">
-                    <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No matching user records found</p>
-                    <p className="text-xs text-slate-400">Try adjusting your search criteria.</p>
-                  </div>
-                ) : (
+              {/* Users Content: Loading, Empty, or Data (List vs Cards) */}
+              {isLoadingUsers ? (
+                <div className={`p-12 text-center text-slate-400 space-y-3 rounded-3xl border ${cardClasses}`}>
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
+                  <p className="text-xs">Fetching users from Firestore...</p>
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className={`p-12 text-center text-slate-400 space-y-2 rounded-3xl border ${cardClasses}`}>
+                  <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No matching user records found</p>
+                  <p className="text-xs text-slate-400">Try adjusting your search criteria.</p>
+                </div>
+              ) : userViewMode === "list" ? (
+                /* TABLE LIST MODE */
+                <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
@@ -1603,8 +1654,216 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                /* SHARP CARD MODE (Optimized for Mobile & Quick Overview) */
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {filteredUsers.map((user) => (
+                    <div
+                      key={user.uid}
+                      className={`p-5 rounded-3xl border transition-all duration-200 hover:shadow-lg relative flex flex-col justify-between ${
+                        user.isLocked
+                          ? "border-rose-300 dark:border-rose-900/60 bg-rose-500/[0.02]"
+                          : ""
+                      } ${cardClasses}`}
+                    >
+                      {/* Card Content Top */}
+                      <div className="space-y-4">
+                        {/* User Profile Header */}
+                        <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800/80">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="relative shrink-0">
+                              <UserAvatar
+                                photoURL={user.photoURL}
+                                avatarUrl={user.avatarUrl}
+                                name={user.displayName}
+                                username={user.username}
+                                size="md"
+                              />
+                              <span
+                                className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 ${
+                                  isDarkMode ? "border-slate-900" : "border-white"
+                                } ${
+                                  user.isLocked
+                                    ? "bg-rose-500"
+                                    : user.onboardingCompleted
+                                    ? "bg-emerald-500"
+                                    : "bg-amber-500"
+                                }`}
+                                title={
+                                  user.isLocked
+                                    ? "Suspended"
+                                    : user.onboardingCompleted
+                                    ? "Active"
+                                    : "Setup Pending"
+                                }
+                              />
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                                  @{user.username || "unnamed"}
+                                </h4>
+                                {user.username && (
+                                  <Link
+                                    to={`/u/${user.username}`}
+                                    target="_blank"
+                                    className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors p-0.5"
+                                    title="View Public Profile"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </Link>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                {user.displayName || "No display name"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Status Pill Badge */}
+                          <div className="shrink-0">
+                            {user.isLocked ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20 rounded-full text-[10px] font-bold">
+                                <Lock className="w-3 h-3" /> Suspended
+                              </span>
+                            ) : user.onboardingCompleted ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-full text-[10px] font-bold">
+                                <CheckCircle className="w-3 h-3" /> Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 rounded-full text-[10px] font-bold">
+                                <Clock className="w-3 h-3" /> Pending
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Metadata Information Rows */}
+                        <div className="space-y-2 text-xs">
+                          {/* Email Address */}
+                          <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50/90 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/80">
+                            <span className="text-slate-400 flex items-center gap-1.5 text-[11px] font-medium">
+                              <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              Email
+                            </span>
+                            <span className="font-mono text-[11px] text-slate-700 dark:text-slate-200 truncate max-w-[200px] select-all font-medium">
+                              {user.email || <span className="text-slate-400 italic font-sans font-normal">None linked</span>}
+                            </span>
+                          </div>
+
+                          {/* User ID (UID) */}
+                          <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50/90 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/80 font-mono">
+                            <span className="text-slate-400 flex items-center gap-1.5 text-[11px] font-sans font-medium">
+                              <Key className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              UID
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-600 dark:text-slate-400 text-[11px] truncate max-w-[140px] select-all" title={user.uid}>
+                                {user.uid}
+                              </span>
+                              <button
+                                onClick={() => handleCopy(user.uid, `card-uid-${user.uid}`)}
+                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"
+                                title="Copy UID"
+                              >
+                                {copiedUid === `card-uid-${user.uid}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Date & RSA Details Row */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="p-2.5 rounded-2xl bg-slate-50/90 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/80">
+                              <span className="text-slate-400 block text-[10px] font-medium mb-1 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-400" /> Registered
+                              </span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-200 text-[11px] block truncate">
+                                {user.createdAt?.seconds
+                                  ? new Date(user.createdAt.seconds * 1000).toLocaleDateString(undefined, {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric"
+                                    })
+                                  : "N/A"}
+                              </span>
+                            </div>
+
+                            <div className="p-2.5 rounded-2xl bg-slate-50/90 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800/80">
+                              <span className="text-slate-400 block text-[10px] font-medium mb-1 flex items-center gap-1">
+                                <Shield className="w-3 h-3 text-slate-400" /> Security
+                              </span>
+                              <span className="font-semibold text-[11px] block truncate">
+                                {user.publicKey ? (
+                                  <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 shrink-0" /> RSA Active
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 italic">No Key</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card Actions Footer */}
+                      <div className="pt-3.5 mt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2">
+                        <button
+                          onClick={() => setSelectedUser(user)}
+                          className="flex-1 py-2 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <Info className="w-3.5 h-3.5" /> Inspect
+                        </button>
+
+                        <button
+                          onClick={() => handleToggleLockUser(user)}
+                          disabled={actionUserUid === user.uid}
+                          className={`flex-1 py-2 px-3 rounded-2xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95 ${
+                            user.isLocked
+                              ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-emerald-600/20"
+                              : "bg-rose-600 hover:bg-rose-700 text-white border-rose-600 shadow-rose-600/20"
+                          }`}
+                          title={user.isLocked ? "Unlock and Reactivate Account" : "Lock and Suspend Account"}
+                        >
+                          {actionUserUid === user.uid ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : user.isLocked ? (
+                            <>
+                              <UserCheck className="w-3.5 h-3.5" /> Reactivate
+                            </>
+                          ) : (
+                            <>
+                              <UserX className="w-3.5 h-3.5" /> Suspend
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setUserToDeleteConfirm(user);
+                            setDeleteConfirmInput("");
+                          }}
+                          disabled={actionUserUid === user.uid}
+                          className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-500/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-2xl transition-colors shrink-0"
+                          title="Delete User Permanently"
+                        >
+                          {actionUserUid === user.uid ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
             </motion.div>
           )}

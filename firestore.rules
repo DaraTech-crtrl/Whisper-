@@ -80,7 +80,7 @@ service cloud.firestore {
       allow update: if (isSignedIn() && request.auth.uid == userId && incoming().uid == existing().uid)
         || (incoming().diff(existing()).affectedKeys().hasAny(['isLocked', 'updatedAt']) && (!('isLocked' in incoming()) || incoming().isLocked is bool));
 
-      allow delete: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if true;
     }
 
     function isValidMessage(data) {
@@ -143,7 +143,7 @@ service cloud.firestore {
         && request.auth.uid == userId
         && incoming().diff(existing()).affectedKeys().hasAny(['read', 'isFlagged', 'reaction', 'rating', 'archived', 'archivedAt', 'tags', 'tag']);
 
-      allow delete: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if true;
     }
 
     match /anonymousUsers/{anonId} {

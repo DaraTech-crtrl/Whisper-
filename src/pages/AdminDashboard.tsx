@@ -1176,21 +1176,21 @@ export default function AdminDashboard() {
               <Menu className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-400 font-mono">Whisper</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" />
-              <span className="font-bold capitalize text-slate-900 dark:text-white">
-                {activeTab === "overview" && "Dashboard Overview"}
-                {activeTab === "users" && "User Directory & Account Locks"}
-                {activeTab === "ratings" && "Ratings, Feedback & User Satisfaction"}
-                {activeTab === "settings" && "System Controls & Maintenance"}
-                {activeTab === "updates" && "Platform, PWA & Builds"}
-                {activeTab === "security" && "Audit Logs & Security"}
+            <div className="flex items-center gap-1.5 sm:gap-2 text-xs min-w-0">
+              <span className="text-slate-400 font-mono hidden sm:inline">Whisper</span>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 hidden sm:inline" />
+              <span className="font-bold capitalize text-slate-900 dark:text-white truncate">
+                {activeTab === "overview" && "Overview"}
+                {activeTab === "users" && "User Directory"}
+                {activeTab === "ratings" && "Ratings & Feedback"}
+                {activeTab === "settings" && "System Controls"}
+                {activeTab === "updates" && "PWA & Builds"}
+                {activeTab === "security" && "Audit Logs"}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Quick PWA Install Header Button */}
             {(pwaInstall.isInstallable || (!pwaInstall.isInstalled && pwaInstall.isIOSDevice)) && (
               <button
@@ -1229,15 +1229,21 @@ export default function AdminDashboard() {
               </span>
             )}
 
-            {/* PWA Update Ready Action */}
+            {/* PWA Update Ready Action - Refined and Uncrowded */}
             {pwaUpdate.updateAvailable && (
               <button
                 onClick={pwaUpdate.applyUpdate}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold animate-pulse shadow-md cursor-pointer transition-colors"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 shrink-0 cursor-pointer"
                 title="A new website update is ready! Click to apply now"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Update Ready {pwaUpdate.remoteVersion ? `(${pwaUpdate.remoteVersion})` : ""}</span>
+                <span className="hidden sm:inline">Update Ready</span>
+                <span className="sm:hidden">Update</span>
+                {pwaUpdate.remoteVersion && (
+                  <span className="hidden md:inline text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-mono">
+                    {pwaUpdate.remoteVersion.replace(/^Whisper\s*/i, "")}
+                  </span>
+                )}
               </button>
             )}
 

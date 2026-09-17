@@ -13,47 +13,68 @@ export default function AppUpdateBanner({ updateState }: AppUpdateBannerProps) {
 
   if (!updateAvailable) return null;
 
+  // Clean version string (strip redundant "Whisper " prefix if present)
+  const formattedVersion = remoteVersion ? remoteVersion.replace(/^Whisper\s*/i, "") : null;
+
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, y: 50, scale: 0.95 }}
+        initial={{ opacity: 0, y: 30, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 50, scale: 0.95 }}
-        className="fixed bottom-20 sm:bottom-6 left-4 right-4 max-w-md mx-auto z-50 pointer-events-auto"
+        exit={{ opacity: 0, y: 30, scale: 0.96 }}
+        transition={{ duration: 0.22, ease: "easeOut" }}
+        className="fixed bottom-4 sm:bottom-6 right-4 left-4 sm:left-auto sm:right-6 sm:w-96 z-50 pointer-events-auto"
       >
-        <div className="bg-slate-900/95 dark:bg-slate-900/95 text-white border-2 border-indigo-500/50 rounded-2xl p-4 shadow-2xl backdrop-blur-md flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600/30 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/30">
-              <Sparkles className="w-5 h-5 text-indigo-300 animate-pulse" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h4 className="font-bold text-sm text-white truncate">New Update Ready!</h4>
-                <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-500/30 text-indigo-300">
-                  {remoteVersion || "New Version"}
-                </span>
+        <div className="bg-slate-900/95 dark:bg-slate-950/95 text-white border border-slate-700/80 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-2xl shadow-black/50 backdrop-blur-xl">
+          {/* Header Row */}
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/30">
+                <Sparkles className="w-4 h-4 text-indigo-300 animate-pulse" />
               </div>
-              <p className="text-xs text-slate-300 truncate">
-                A fresh version of Whisper is ready to install.
-              </p>
+              <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                <h4 className="font-bold text-sm text-white">
+                  Update Ready
+                </h4>
+                {formattedVersion && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 shrink-0">
+                    {formattedVersion}
+                  </span>
+                )}
+              </div>
             </div>
+
+            <button
+              onClick={dismissUpdate}
+              className="w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors flex items-center justify-center shrink-0 cursor-pointer"
+              title="Dismiss notification"
+              aria-label="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Description */}
+          <p className="text-xs text-slate-300 leading-relaxed mb-4">
+            A fresh version of Whisper is ready with updated features, performance improvements, and fixes.
+          </p>
+
+          {/* Action Row */}
+          <div className="flex items-center gap-2.5">
             <button
               onClick={applyUpdate}
               disabled={isChecking}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isChecking ? "animate-spin" : ""}`} />
-              Update Now
+              <span>{isChecking ? "Installing..." : "Update & Refresh"}</span>
             </button>
+
             <button
               onClick={dismissUpdate}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors"
-              title="Dismiss"
+              className="py-2.5 px-3.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-colors cursor-pointer"
             >
-              <X className="w-4 h-4" />
+              Later
             </button>
           </div>
         </div>

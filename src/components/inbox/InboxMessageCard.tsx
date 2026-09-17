@@ -34,7 +34,6 @@ interface InboxMessageCardProps {
   isSelected: boolean;
   layoutDensity?: "cards" | "compact";
   restrictSenderHints?: boolean;
-  senderReputation?: number;
   onSelect: (id: string, e?: React.MouseEvent) => void;
   onClick: (msg: Message) => void;
   onDelete: (id: string, e?: React.MouseEvent) => void;

@@ -132,7 +132,6 @@ export default function Dashboard() {
   const { user, dbUser, privateKey } = useAuthStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [decryptedCache, setDecryptedCache] = useState<Record<string, string>>({});
-  const [senderReputations, setSenderReputations] = useState<Record<string, number>>({});
   const [copied, setCopied] = useState(false);
   const [dashboardTab, setDashboardTab] = useState<"home" | "inbox">("home");
   
@@ -445,22 +444,6 @@ export default function Dashboard() {
         });
       }
     });
-
-    // Fetch and populate sender reputations
-    const unmetSenderIds = [...new Set(messages.map(m => m.senderId).filter(Boolean))]
-      .filter(id => senderReputations[id as string] === undefined);
-
-    if (unmetSenderIds.length > 0) {
-      unmetSenderIds.forEach(async (id) => {
-        try {
-          const d = await getDoc(doc(db, "anonymousUsers", id as string));
-          setSenderReputations(prev => ({ 
-            ...prev, 
-            [id as string]: d.exists() ? (d.data().reputation || 0) : 0 
-          }));
-        } catch(e) {}
-      });
-    }
   }, [messages, privateKey]);
 
   // Auto-sync Web Push subscription if permission is granted and notifications are enabled
@@ -531,9 +514,6 @@ export default function Dashboard() {
     };
 
     const getMsgReputationOrRating = (m: Message) => {
-      if (m.senderId && senderReputations[m.senderId] !== undefined) {
-        return senderReputations[m.senderId];
-      }
       if (typeof m.rating === 'number') return m.rating;
       return 0;
     };
@@ -565,7 +545,7 @@ export default function Dashboard() {
       const timeB = getMsgTime(b);
       return timeB - timeA;
     });
-  }, [displayedMessages, sortBy, senderReputations, decryptedCache]);
+  }, [displayedMessages, sortBy, decryptedCache]);
 
   // Reset Filters Handler
   const handleResetFilters = () => {
@@ -762,16 +742,6 @@ export default function Dashboard() {
 
     try {
       await updateDoc(doc(db, "users", user.uid, "messages", msg.id), { rating: newRating });
-      if (msg.senderId) {
-        const repRef = doc(db, "anonymousUsers", msg.senderId);
-        const repDoc = await getDoc(repRef);
-        const currentRep = repDoc.exists() ? (repDoc.data().reputation || 0) : 0;
-        await setDoc(repRef, { reputation: currentRep + diff }, { merge: true });
-        setSenderReputations(prev => ({
-          ...prev,
-          [msg.senderId as string]: currentRep + diff
-        }));
-      }
     } catch (err) {
       console.error("Failed to rate message", err);
     }
@@ -1338,7 +1308,6 @@ export default function Dashboard() {
                     isSelected={selectedIds.has(msg.id)}
                     layoutDensity={layoutDensity}
                     restrictSenderHints={restrictSenderHints}
-                    senderReputation={msg.senderId ? senderReputations[msg.senderId] : msg.rating}
                     onSelect={toggleSelectMessage}
                     onClick={handleMessageClick}
                     onDelete={deleteMsg}

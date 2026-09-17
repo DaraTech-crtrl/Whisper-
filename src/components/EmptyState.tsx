@@ -151,7 +151,7 @@ export default function EmptyState({
       </p>
 
       {/* Security & Feature Badges */}
-      <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+      <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
         <div className="flex items-start gap-2.5 p-2 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
           <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
           <div className="text-[11px] leading-tight">
@@ -165,14 +165,6 @@ export default function EmptyState({
           <div className="text-[11px] leading-tight">
             <span className="font-bold text-slate-800 dark:text-slate-200 block">Real-time Delivery</span>
             <span className="text-slate-400">Instant inbox alerts</span>
-          </div>
-        </div>
-
-        <div className="flex items-start gap-2.5 p-2 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
-          <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-          <div className="text-[11px] leading-tight">
-            <span className="font-bold text-slate-800 dark:text-slate-200 block">Sender Reputation</span>
-            <span className="text-slate-400">Rate & block bad senders</span>
           </div>
         </div>
       </div>

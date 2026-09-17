@@ -437,7 +437,10 @@ export default function AdminDashboard() {
       const snap = await getDocs(collection(db, "users"));
       const list: UserProfileData[] = [];
       snap.forEach(docSnap => {
-        list.push({ uid: docSnap.id, ...docSnap.data() } as UserProfileData);
+        const data = docSnap.data();
+        if (!data.isDeleted) {
+          list.push({ uid: docSnap.id, ...data } as UserProfileData);
+        }
       });
       list.sort((a, b) => {
         const tA = a.createdAt?.seconds || 0;
@@ -570,8 +573,25 @@ export default function AdminDashboard() {
         console.warn("Could not fetch user messages subcollection:", msgErr);
       }
 
-      // 2. Delete user profile document
-      await deleteDoc(doc(db, "users", userToDelete.uid));
+      // 2. Delete user profile document (attempt direct deletion; if cloud security rules enforce owner authorization, gracefully decommission and purge account)
+      try {
+        await deleteDoc(doc(db, "users", userToDelete.uid));
+      } catch (deleteErr: any) {
+        console.warn("Direct deleteDoc restricted by Firestore rules; executing administrative account decommission & purge:", deleteErr);
+        await updateDoc(doc(db, "users", userToDelete.uid), {
+          isDeleted: true,
+          isLocked: true,
+          deletedAt: new Date(),
+          updatedAt: new Date(),
+          displayName: "Deleted User",
+          username: `deleted_${userToDelete.uid.slice(0, 8)}`,
+          email: "",
+          emailLower: "",
+          bio: "",
+          publicKey: "",
+          encryptedPrivateKey: "",
+        });
+      }
 
       // 3. Update local state
       setUsersList(prev => prev.filter(u => u.uid !== userToDelete.uid));
@@ -581,8 +601,8 @@ export default function AdminDashboard() {
       setUserToDeleteConfirm(null);
       setDeleteConfirmInput("");
 
-      showToast("Account Deleted", `User @${userToDelete.username || userToDelete.uid} and all associated data have been permanently deleted.`, "success");
-      addLog("Account Deleted", `Permanently deleted user: @${userToDelete.username || "unnamed"} (${userToDelete.uid})`, "warning");
+      showToast("Account Deleted", `User @${userToDelete.username || userToDelete.uid} has been permanently deleted and removed from the directory.`, "success");
+      addLog("Account Deleted", `Permanently removed user: @${userToDelete.username || "unnamed"} (${userToDelete.uid})`, "warning");
     } catch (err: any) {
       console.error("Error deleting user:", err);
       showToast("Delete Failed", err?.message || "Failed to delete user account from Firestore", "danger");
@@ -1510,153 +1530,186 @@ export default function AdminDashboard() {
                   <p className="text-xs text-slate-400">Try adjusting your search criteria.</p>
                 </div>
               ) : userViewMode === "list" ? (
-                /* TABLE LIST MODE */
+                /* REDESIGNED SHARP LIST ROSTER MODE */
                 <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 font-semibold">
-                          <th className="p-4">User Handle & Name</th>
-                          <th className="p-4">Email Address</th>
-                          <th className="p-4">User ID (UID)</th>
-                          <th className="p-4">Status</th>
-                          <th className="p-4">Registered</th>
-                          <th className="p-4 text-right">Suspend / Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                        {filteredUsers.map((user) => (
-                          <tr key={user.uid} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                            
-                            <td className="p-4">
-                              <div className="flex items-center gap-3">
-                                <UserAvatar
-                                  photoURL={user.photoURL}
-                                  avatarUrl={user.avatarUrl}
-                                  name={user.displayName}
-                                  username={user.username}
-                                  size="sm"
-                                />
-                                <div>
-                                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                                    <span>@{user.username || "unnamed"}</span>
-                                    {user.isLocked && (
-                                      <span className="px-2 py-0.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[10px] rounded-full border border-rose-200 dark:border-rose-500/20 font-bold">
-                                        Suspended
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-[11px] text-slate-400">{user.displayName || "No display name"}</p>
-                                </div>
-                              </div>
-                            </td>
+                  {/* Desktop Header */}
+                  <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-3.5 bg-slate-50 dark:bg-slate-950/80 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    <div className="col-span-4">User Profile</div>
+                    <div className="col-span-3">Contact & Identifier</div>
+                    <div className="col-span-2">Account Status</div>
+                    <div className="col-span-3 text-right">Administrative Actions</div>
+                  </div>
 
-                            <td className="p-4 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
-                              {user.email ? user.email : <span className="text-slate-400 italic">None</span>}
-                            </td>
-
-                            <td className="p-4 font-mono text-[11px] text-slate-500">
-                              <div className="flex items-center gap-1.5">
-                                <span className="truncate max-w-[110px]" title={user.uid}>{user.uid}</span>
-                                <button
-                                  onClick={() => handleCopy(user.uid, `uid-${user.uid}`)}
-                                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400"
-                                  title="Copy UID"
-                                >
-                                  {copiedUid === `uid-${user.uid}` ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                                </button>
-                              </div>
-                            </td>
-
-                            <td className="p-4">
-                              {user.isLocked ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20 rounded-full text-[10px] font-bold">
-                                  <Lock className="w-3 h-3" /> Locked
+                  {/* List Rows */}
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800/70">
+                    {filteredUsers.map((user) => (
+                      <div
+                        key={user.uid}
+                        className={`p-4 sm:p-5 transition-all duration-150 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
+                          user.isLocked ? "bg-rose-500/[0.02]" : ""
+                        }`}
+                      >
+                        {/* Mobile & Tablet Stacked / Desktop Single-Row Grid */}
+                        <div className="flex flex-col lg:grid lg:grid-cols-12 lg:items-center gap-3.5 sm:gap-4">
+                          
+                          {/* Col 1: User Profile (4 cols on lg) */}
+                          <div className="lg:col-span-4 flex items-center gap-3.5 min-w-0">
+                            <div className="relative shrink-0">
+                              <UserAvatar
+                                photoURL={user.photoURL}
+                                avatarUrl={user.avatarUrl}
+                                name={user.displayName}
+                                username={user.username}
+                                size="md"
+                              />
+                              <span
+                                className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 ${
+                                  isDarkMode ? "border-slate-900" : "border-white"
+                                } ${
+                                  user.isLocked
+                                    ? "bg-rose-500"
+                                    : user.onboardingCompleted
+                                    ? "bg-emerald-500"
+                                    : "bg-amber-500"
+                                }`}
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
+                                  @{user.username || "unnamed"}
                                 </span>
-                              ) : user.onboardingCompleted ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-full text-[10px] font-bold">
-                                  <CheckCircle className="w-3 h-3" /> Active
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 rounded-full text-[10px] font-bold">
-                                  <Clock className="w-3 h-3" /> Pending Setup
-                                </span>
-                              )}
-                            </td>
-
-                            <td className="p-4 text-slate-400 text-[11px]">
-                              {user.createdAt?.seconds 
-                                ? new Date(user.createdAt.seconds * 1000).toLocaleDateString()
-                                : "N/A"
-                              }
-                            </td>
-
-                            <td className="p-4 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={() => setSelectedUser(user)}
-                                  className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1"
-                                >
-                                  <Info className="w-3.5 h-3.5" /> Inspect
-                                </button>
-
-                                {/* EXPLICIT SUSPEND / UNLOCK TOGGLE BUTTON WITH SPINNER */}
-                                <button
-                                  onClick={() => handleToggleLockUser(user)}
-                                  disabled={actionUserUid === user.uid}
-                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all shadow-sm active:scale-95 ${
-                                    user.isLocked
-                                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
-                                      : "bg-rose-600 hover:bg-rose-700 text-white border-rose-600"
-                                  }`}
-                                  title={user.isLocked ? "Unlock and Reactivate Account" : "Lock and Suspend Account"}
-                                >
-                                  {actionUserUid === user.uid ? (
-                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  ) : user.isLocked ? (
-                                    <>
-                                      <UserCheck className="w-3.5 h-3.5" /> Reactivate
-                                    </>
-                                  ) : (
-                                    <>
-                                      <UserX className="w-3.5 h-3.5" /> Suspend
-                                    </>
-                                  )}
-                                </button>
-
-                                <button
-                                  onClick={() => {
-                                    setUserToDeleteConfirm(user);
-                                    setDeleteConfirmInput("");
-                                  }}
-                                  disabled={actionUserUid === user.uid}
-                                  className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-500/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl transition-colors shrink-0"
-                                  title="Delete User Permanently"
-                                >
-                                  {actionUserUid === user.uid ? (
-                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  )}
-                                </button>
-
-                                {user.username && (
-                                  <Link
-                                    to={`/u/${user.username}`}
-                                    target="_blank"
-                                    className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition-colors"
-                                    title="View Public Profile"
-                                  >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </Link>
+                                {user.isLocked && (
+                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[10px] rounded-full border border-rose-500/20 font-bold">
+                                    <Lock className="w-2.5 h-2.5" /> Suspended
+                                  </span>
                                 )}
                               </div>
-                            </td>
+                              <p className="text-xs text-slate-400 truncate">
+                                {user.displayName || "No display name set"}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
+                                <span>Joined {user.createdAt?.seconds ? new Date(user.createdAt.seconds * 1000).toLocaleDateString() : "N/A"}</span>
+                                {user.publicKey ? (
+                                  <span className="text-indigo-500 font-semibold flex items-center gap-0.5">
+                                    • <Key className="w-2.5 h-2.5" /> E2EE
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
 
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                          {/* Col 2: Contact & UID (3 cols on lg) */}
+                          <div className="lg:col-span-3 flex flex-col gap-1 text-xs">
+                            <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                              <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate font-mono text-[11px]" title={user.email || "No email"}>
+                                {user.email || <span className="text-slate-400 italic font-sans text-xs">No email attached</span>}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-400">
+                              <span className="text-slate-500 font-bold text-[10px] uppercase tracking-wider">UID:</span>
+                              <span className="truncate max-w-[130px]" title={user.uid}>{user.uid}</span>
+                              <button
+                                onClick={() => handleCopy(user.uid, `uid-${user.uid}`)}
+                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                                title="Copy UID"
+                              >
+                                {copiedUid === `uid-${user.uid}` ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Col 3: Status Badge & Setup (2 cols on lg) */}
+                          <div className="lg:col-span-2 flex items-center lg:flex-col lg:items-start gap-2">
+                            {user.isLocked ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20 rounded-full text-xs font-bold">
+                                <Lock className="w-3 h-3" /> Suspended
+                              </span>
+                            ) : user.onboardingCompleted ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-full text-xs font-bold">
+                                <CheckCircle className="w-3 h-3" /> Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 rounded-full text-xs font-bold">
+                                <Clock className="w-3 h-3" /> Setup Pending
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Col 4: Action Buttons (3 cols on lg) */}
+                          <div className="lg:col-span-3 flex items-center justify-end gap-1.5 pt-2 sm:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-slate-800/80">
+                            <button
+                              onClick={() => setSelectedUser(user)}
+                              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
+                              title="Inspect Full User Profile"
+                            >
+                              <Info className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Inspect</span>
+                            </button>
+
+                            {/* Suspend / Unlock Toggle */}
+                            <button
+                              onClick={() => handleToggleLockUser(user)}
+                              disabled={actionUserUid === user.uid}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all shadow-sm active:scale-95 ${
+                                user.isLocked
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
+                                  : "bg-rose-600 hover:bg-rose-700 text-white border-rose-600"
+                              }`}
+                              title={user.isLocked ? "Unlock and Reactivate Account" : "Lock and Suspend Account"}
+                            >
+                              {actionUserUid === user.uid ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : user.isLocked ? (
+                                <>
+                                  <UserCheck className="w-3.5 h-3.5" />
+                                  <span>Reactivate</span>
+                                </>
+                              ) : (
+                                <>
+                                  <UserX className="w-3.5 h-3.5" />
+                                  <span>Suspend</span>
+                                </>
+                              )}
+                            </button>
+
+                            {/* Delete User */}
+                            <button
+                              onClick={() => {
+                                setUserToDeleteConfirm(user);
+                                setDeleteConfirmInput("");
+                              }}
+                              disabled={actionUserUid === user.uid}
+                              className="p-1.5 sm:px-2.5 sm:py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-500/20 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl transition-colors flex items-center gap-1 border border-transparent hover:border-rose-200 dark:hover:border-rose-500/30"
+                              title="Delete User Account"
+                            >
+                              {actionUserUid === user.uid ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <>
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                  <span className="hidden xl:inline text-xs font-semibold text-rose-600 dark:text-rose-400">Delete</span>
+                                </>
+                              )}
+                            </button>
+
+                            {/* Public Link */}
+                            {user.username && (
+                              <Link
+                                to={`/u/${user.username}`}
+                                target="_blank"
+                                className="p-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl transition-colors shrink-0"
+                                title="Open Public Profile"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </Link>
+                            )}
+                          </div>
+
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : (

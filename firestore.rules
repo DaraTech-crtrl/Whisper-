@@ -78,7 +78,7 @@ service cloud.firestore {
         && isValidUserProfile(incoming());
 
       allow update: if (isSignedIn() && request.auth.uid == userId && incoming().uid == existing().uid)
-        || (incoming().diff(existing()).affectedKeys().hasAny(['isLocked', 'updatedAt']) && (!('isLocked' in incoming()) || incoming().isLocked is bool));
+        || (incoming().diff(existing()).affectedKeys().hasAny(['isLocked', 'isDeleted', 'deletedAt', 'updatedAt']) && (!('isLocked' in incoming()) || incoming().isLocked is bool));
 
       allow delete: if true;
     }

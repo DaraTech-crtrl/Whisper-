@@ -101,6 +101,7 @@ export interface SystemSettingsData {
   announcementActive: boolean;
   announcementText: string;
   allowRegistrations: boolean;
+  allowGoogleAuth?: boolean;
   maxMessageLength: number;
   defaultExpiryHours: number;
   restrictSenderHints?: boolean;
@@ -206,6 +207,7 @@ export default function AdminDashboard() {
     announcementActive: false,
     announcementText: "Welcome to Whisper! Enjoy fast, end-to-end encrypted anonymous messaging.",
     allowRegistrations: true,
+    allowGoogleAuth: false,
     maxMessageLength: 800000,
     defaultExpiryHours: 24,
     restrictSenderHints: false,
@@ -472,6 +474,7 @@ export default function AdminDashboard() {
           announcementActive: !!data.announcementActive,
           announcementText: data.announcementText || settings.announcementText,
           allowRegistrations: data.allowRegistrations !== false,
+          allowGoogleAuth: data.allowGoogleAuth === true,
           maxMessageLength: data.maxMessageLength || 800000,
           defaultExpiryHours: data.defaultExpiryHours || 24,
           restrictSenderHints: !!data.restrictSenderHints,
@@ -2495,6 +2498,55 @@ export default function AdminDashboard() {
                       </span>
                     )}
                   </div>
+                </div>
+
+                {/* Google Sign-in / Sign-up OAuth Control */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${cardClasses}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center shrink-0 shadow-sm">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24">
+                          <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
+                          <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/>
+                          <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12.3 0 15.2s.7 5.5 1.9 7.9l3.7-2.9z"/>
+                          <path fill="#34A853" d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <h2 className="font-bold text-base text-slate-900 dark:text-white">Google Sign-In & Sign-Up</h2>
+                        <p className="text-xs text-slate-500">Show or hide the "Continue with Google" button on the authentication screen.</p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSettings(s => ({ ...s, allowGoogleAuth: !s.allowGoogleAuth }))}
+                      className={`w-14 h-7 rounded-full p-1 transition-colors ${
+                        settings.allowGoogleAuth ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-800"
+                      }`}
+                      title={settings.allowGoogleAuth ? "Click to disable Google Authentication" : "Click to enable Google Authentication"}
+                    >
+                      <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                        settings.allowGoogleAuth ? "translate-x-7" : "translate-x-0"
+                      }`} />
+                    </button>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Auth Page Status:</span>
+                    {settings.allowGoogleAuth ? (
+                      <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs rounded-xl flex items-center gap-1.5">
+                        <CheckCircle className="w-3.5 h-3.5" /> Google Auth Visible
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs rounded-xl flex items-center gap-1.5">
+                        <EyeOff className="w-3.5 h-3.5" /> Google Auth Hidden (Disabled)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    When disabled, users sign in and register smoothly with Email & Password. Keeps mobile users from encountering Firebase Auth domain connection errors.
+                  </p>
                 </div>
 
                 {/* Sign-ups & Limits */}

@@ -280,6 +280,11 @@ export default function Dashboard() {
         body,
         mode: payload.data?.mode
       });
+      
+      // Auto-dismiss after 3 seconds as requested
+      setTimeout(() => {
+        setForegroundToast(null);
+      }, 3000);
     });
 
     return () => {
@@ -1018,52 +1023,46 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 py-8 max-w-md mx-auto space-y-6 min-h-screen pb-28">
-      {/* Realtime In-App Incoming Whisper Notification Toast */}
+      {/* Realtime In-App Incoming Whisper Notification Toast - Redesigned as a small top-left pill */}
       <AnimatePresence>
         {foregroundToast && (
           <motion.div
-            initial={{ opacity: 0, y: -25, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -25, scale: 0.95 }}
-            className="fixed top-4 left-4 right-4 max-w-md mx-auto z-50 pointer-events-auto"
+            initial={{ opacity: 0, x: -50, scale: 0.9 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -50, scale: 0.9 }}
+            className="fixed top-4 left-4 z-[100] pointer-events-auto"
           >
-            <div className="bg-white dark:bg-slate-900 border-2 border-indigo-500/40 rounded-2xl p-4 shadow-2xl flex items-center justify-between gap-3 backdrop-blur-md">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 text-xl shadow-xs">
-                  🤫
-                </div>
-                <div className="min-w-0">
-                  <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
-                    {foregroundToast.title}
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                    {foregroundToast.body}
-                  </p>
-                </div>
+            <div 
+              onClick={() => {
+                setDashboardTab("inbox");
+                setInboxView("active");
+                const targetId = foregroundToast.messageId;
+                setForegroundToast(null);
+                if (targetId) {
+                  const found = messages.find(m => m.id === targetId);
+                  if (found) handleMessageClick(found);
+                }
+              }}
+              className="bg-indigo-600 text-white border border-indigo-400 rounded-full py-1.5 pl-2 pr-4 shadow-xl flex items-center gap-2 cursor-pointer hover:bg-indigo-700 transition-colors"
+            >
+              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs shrink-0">
+                🤫
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => {
-                    setDashboardTab("inbox");
-                    setInboxView("active");
-                    const targetId = foregroundToast.messageId;
-                    setForegroundToast(null);
-                    if (targetId) {
-                      const found = messages.find(m => m.id === targetId);
-                      if (found) handleMessageClick(found);
-                    }
-                  }}
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm"
-                >
-                  View
-                </button>
-                <button
-                  onClick={() => setForegroundToast(null)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-tight leading-none">
+                  New Whisper
+                </p>
+                <p className="text-[9px] opacity-90 truncate max-w-[120px] leading-tight">
+                  {foregroundToast.body}
+                </p>
               </div>
+              <X 
+                className="w-3 h-3 opacity-50 hover:opacity-100 ml-1" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setForegroundToast(null);
+                }}
+              />
             </div>
           </motion.div>
         )}

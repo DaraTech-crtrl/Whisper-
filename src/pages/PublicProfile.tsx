@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useLocation } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { encryptMessage } from "../lib/crypto";
@@ -51,18 +52,6 @@ export default function PublicProfile() {
     }
     setAnonId(storedId);
   }, []);
-
-  useEffect(() => {
-    if (username) {
-      document.title = `${currentMode.icon} ${currentMode.name} — @${username} on Whisper`;
-    } else {
-      document.title = `${currentMode.name} — Whisper Anonymous Messaging`;
-    }
-
-    return () => {
-      document.title = "Whisper — Anonymous Encrypted Messaging";
-    };
-  }, [username, currentMode]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -172,22 +161,72 @@ export default function PublicProfile() {
 
   const isLinkPaused = isPermanentlyPaused || isTemporarilyPaused;
 
+  const pageTitle = profile 
+    ? `${currentMode.icon} ${currentMode.name} — @${username} on Whisper`
+    : `${currentMode.icon} ${currentMode.name} — Whisper Anonymous Messaging`;
+
+  const pageDescription = profile
+    ? `Send a 100% anonymous, E2E encrypted message to ${profile.displayName || '@' + username} on Whisper.`
+    : `Send anonymous, E2E encrypted messages.`;
+
+  const appUrl = typeof window !== 'undefined' ? window.location.href : '';
+
+  const renderHelmet = () => (
+    <Helmet>
+      <title>{pageTitle}</title>
+      <meta name="description" content={pageDescription} />
+      <meta property="og:type" content="website" />
+      <meta property="og:title" content={pageTitle} />
+      <meta property="og:description" content={pageDescription} />
+      <meta property="og:url" content={appUrl} />
+      <meta property="og:site_name" content="Whisper" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content={pageTitle} />
+      <meta name="twitter:description" content={pageDescription} />
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          "name": "Whisper",
+          "applicationCategory": "CommunicationApplication",
+          "operatingSystem": "All",
+          "description": pageDescription,
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          }
+        })}
+      </script>
+    </Helmet>
+  );
+
   if (status === "loading") {
-    return <LoadingScreen message="Whisper" subtext="Finding public profile..." fullScreen={false} />;
+    return (
+      <>
+        {renderHelmet()}
+        <LoadingScreen message="Whisper" subtext="Finding public profile..." fullScreen={false} />
+      </>
+    );
   }
 
   if (status === "not_found" || !profile) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-6 min-h-[50vh]">
-        <AlertTriangle className="w-12 h-12 text-slate-400 mb-4" />
-        <h2 className="text-xl font-bold mb-2 text-slate-900 dark:text-white">Profile Not Found</h2>
-        <p className="text-slate-500 dark:text-slate-400">The link might be broken or the user doesn't exist.</p>
-      </div>
+      <>
+        {renderHelmet()}
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 min-h-[50vh]">
+          <AlertTriangle className="w-12 h-12 text-slate-400 mb-4" />
+          <h2 className="text-xl font-bold mb-2 text-slate-900 dark:text-white">Profile Not Found</h2>
+          <p className="text-slate-500 dark:text-slate-400">The link might be broken or the user doesn't exist.</p>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-[100dvh] w-full pb-16 flex flex-col items-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <>
+      {renderHelmet()}
+      <div className="min-h-[100dvh] w-full pb-16 flex flex-col items-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       <div className="w-full max-w-md px-4 relative flex flex-col mt-8 sm:mt-12 z-10">
       <AnimatePresence mode="wait">
         {!sent ? (
@@ -401,6 +440,7 @@ export default function PublicProfile() {
       </div>
       </div>
     </div>
+    </>
   );
 }
 

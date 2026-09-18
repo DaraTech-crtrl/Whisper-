@@ -410,10 +410,8 @@ export default function AdminDashboard() {
         return tB - tA;
       });
       setRatingsList(list);
-      addLog("Ratings Sync", `Retrieved ${list.length} rating & feedback record(s)`, "info");
     } catch (err: any) {
       console.error("Failed to fetch ratings:", err);
-      addLog("Fetch Ratings Failure", err?.message || "Error reading ratings collection", "danger");
       showToast("Sync Error", "Could not fetch ratings from Firestore", "danger");
     } finally {
       setIsLoadingRatings(false);
@@ -474,10 +472,8 @@ export default function AdminDashboard() {
         return tB - tA;
       });
       setSystemLogsList(list);
-      addLog("System Logs Sync", `Retrieved ${list.length} remote client error log(s)`, "info");
     } catch (err: any) {
       console.error("Failed to fetch system logs:", err);
-      addLog("Fetch System Logs Failure", err?.message || "Error reading system-logs collection", "danger");
       showToast("Sync Error", "Could not fetch system error logs from Firestore", "danger");
     } finally {
       setIsLoadingSystemLogs(false);
@@ -558,10 +554,8 @@ export default function AdminDashboard() {
         return tB - tA;
       });
       setUsersList(list);
-      addLog("Users Directory Sync", `Retrieved ${list.length} user record(s)`, "info");
     } catch (err: any) {
       console.error("Failed to fetch users:", err);
-      addLog("Fetch Users Failure", err?.message || "Error reading users collection", "danger");
       showToast("Sync Error", "Could not fetch user directory from Firestore", "danger");
     } finally {
       setIsLoadingUsers(false);

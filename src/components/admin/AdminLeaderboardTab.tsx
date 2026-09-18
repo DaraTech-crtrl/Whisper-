@@ -451,7 +451,7 @@ export default function AdminLeaderboardTab({
       {/* UNIQUE ADMIN TOP 10 HONOR ROLL - MAJESTIC PODIUM STYLE */}
       {selectedRankFilter === "all" && !searchQuery && rankedUsers.length > 0 && (
         <div className="space-y-4 py-8 px-4 bg-gradient-to-b from-indigo-50/30 via-transparent to-transparent dark:from-indigo-950/10 rounded-3xl mb-6">
-          <div className="text-center space-y-1 mb-10">
+          <div className="text-center space-y-1 mb-16 sm:mb-20">
             <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center justify-center gap-2">
               <Sparkles className="w-5 h-5 text-amber-500 fill-current" />
               Whisper Hall of Fame
@@ -497,8 +497,8 @@ export default function AdminLeaderboardTab({
 
             {/* Rank 1 - Gold */}
             {rankedUsers[0] && (
-              <div className="flex flex-col items-center group relative -mt-16">
-                <div className="relative mb-5 scale-110 sm:scale-125 origin-bottom">
+              <div className="flex flex-col items-center group relative -mt-10 sm:-mt-16">
+                <div className="relative mb-5 scale-90 sm:scale-125 origin-bottom">
                   {/* Decorative Glow */}
                   <div className="absolute -inset-4 bg-amber-400/20 dark:bg-amber-400/10 blur-2xl rounded-full animate-pulse" />
                   
@@ -690,29 +690,29 @@ export default function AdminLeaderboardTab({
             </div>
           </div>
         ) : (
-          /* Cards Grid View - Redesigned for Maximum Impact */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          /* Cards Grid View - Condensed for high-volume scalability */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredUsers.slice(selectedRankFilter === "all" && !searchQuery ? 3 : 0).map((u) => (
               <div
                 key={u.uid}
                 className={cn(
-                  "group relative p-6 rounded-[2.5rem] border transition-all duration-500 flex flex-col justify-between shadow-xl hover:shadow-2xl hover:-translate-y-2 overflow-hidden",
+                  "group relative p-4 rounded-3xl border transition-all duration-300 flex flex-col justify-between shadow-lg hover:shadow-xl hover:-translate-y-1 overflow-hidden",
                   u.rank === 1 ? "bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-900 border-amber-300 dark:border-amber-500/30" :
                   u.rank === 2 ? "bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/40 dark:to-slate-900 border-slate-300 dark:border-slate-600" :
                   u.rank === 3 ? "bg-gradient-to-br from-amber-50/30 to-white dark:from-amber-950/10 dark:to-slate-900 border-amber-700/30 dark:border-amber-800/20" :
-                  "bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 shadow-indigo-500/5"
+                  "bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800"
                 )}
               >
-                {/* Background rank number decoration */}
-                <div className="absolute -right-6 -top-12 text-[10rem] font-black text-slate-100/50 dark:text-slate-800/20 select-none pointer-events-none group-hover:scale-110 group-hover:text-indigo-500/5 transition-all duration-700">
+                {/* Subtle background rank decoration */}
+                <div className="absolute -right-2 -top-4 text-6xl font-black text-slate-100/30 dark:text-slate-800/10 select-none pointer-events-none group-hover:scale-110 transition-all duration-700">
                   {u.rank}
                 </div>
 
                 <div className="relative z-10">
                   {/* Card Header: Rank & Actions */}
-                  <div className="flex items-center justify-between gap-2 mb-6">
+                  <div className="flex items-center justify-between gap-2 mb-4">
                     <div className={cn(
-                      "flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl font-mono font-black text-xs shadow-md border",
+                      "flex items-center gap-1 px-2.5 py-1 rounded-xl font-mono font-black text-[10px] shadow-sm border",
                       u.rank === 1 ? "bg-amber-400 border-amber-500 text-slate-950" :
                       u.rank === 2 ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white" :
                       u.rank === 3 ? "bg-amber-900 border-amber-950 text-white" :
@@ -726,21 +726,20 @@ export default function AdminLeaderboardTab({
                       <Link
                         to={`/u/${u.username}`}
                         target="_blank"
-                        className="w-8 h-8 flex items-center justify-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm border border-slate-100 dark:border-slate-700"
+                        className="w-7 h-7 flex items-center justify-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm border border-slate-100 dark:border-slate-700"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-3 h-3" />
                       </Link>
                     </div>
                   </div>
 
-                  {/* User Profile Info */}
-                  <div className="flex flex-col items-center text-center mb-6">
-                    <div className="relative mb-3">
+                  {/* User Profile Info - More Compact */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="relative shrink-0">
                       <div className={cn(
-                        "w-20 h-20 rounded-[2rem] overflow-hidden border-4 border-white dark:border-slate-800 shadow-lg group-hover:rotate-6 transition-transform duration-500",
-                        u.rank === 1 ? "ring-4 ring-amber-400/20" :
-                        u.rank === 2 ? "ring-4 ring-slate-400/10" :
-                        u.rank === 3 ? "ring-4 ring-amber-900/10" : ""
+                        "w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-slate-800 shadow-md group-hover:scale-105 transition-transform duration-300",
+                        u.rank === 1 ? "ring-2 ring-amber-400/20" :
+                        u.rank === 2 ? "ring-2 ring-slate-400/10" : ""
                       )}>
                         <UserAvatar 
                           name={u.displayName} 
@@ -750,50 +749,46 @@ export default function AdminLeaderboardTab({
                         />
                       </div>
                       {u.rank <= 3 && (
-                        <div className="absolute -bottom-2 -right-2 w-9 h-9 rounded-2xl bg-white dark:bg-slate-800 shadow-md border border-slate-100 dark:border-slate-700 flex items-center justify-center text-lg animate-bounce duration-[3000ms]">
+                        <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-lg bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center text-[10px]">
                           {u.rank === 1 ? "🥇" : u.rank === 2 ? "🥈" : "🥉"}
                         </div>
                       )}
                     </div>
                     
-                    <h4 className="font-black text-lg text-slate-900 dark:text-white truncate max-w-full tracking-tight leading-tight">
-                      {u.displayName || u.username}
-                    </h4>
-                    <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mt-0.5">
-                      @{u.username}
-                    </p>
+                    <div className="min-w-0">
+                      <h4 className="font-black text-sm text-slate-900 dark:text-white truncate tracking-tight leading-tight mb-0.5">
+                        {u.displayName || u.username}
+                      </h4>
+                      <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                        @{u.username}
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Achievement & Stats */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 px-1">
-                      <span>Performance</span>
-                      <span>Metrics</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-slate-50 dark:bg-slate-950/80 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1.5">Volume</p>
-                        <p className="text-xl font-black text-slate-900 dark:text-white font-mono leading-none">
+                  {/* Achievement & Stats - Highly Dense */}
+                  <div className="flex items-center justify-between gap-4 p-2.5 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-slate-100/50 dark:border-slate-800/50">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Volume</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-black text-slate-900 dark:text-white font-mono leading-none">
                           {u.messageCount.toLocaleString()}
                         </p>
-                      </div>
-                      <div className="bg-slate-50 dark:bg-slate-950/80 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col justify-center items-center">
-                        <TrendingUp className={cn("w-5 h-5 mb-1", u.rank <= 10 ? "text-emerald-500" : "text-indigo-500")} />
-                        <span className="text-[9px] font-black uppercase text-slate-500">Momentum</span>
+                        <TrendingUp className={cn("w-3 h-3", u.rank <= 10 ? "text-emerald-500" : "text-indigo-500")} />
                       </div>
                     </div>
-
-                    {u.badge && (
+                    
+                    {u.badge ? (
                       <div className={cn(
-                        "w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border text-[10px] font-black uppercase tracking-widest shadow-2xs group-hover:shadow-md transition-all",
+                        "flex items-center gap-1 px-2 py-1 rounded-xl border text-[8px] font-black uppercase tracking-widest shadow-2xs whitespace-nowrap",
                         u.badge.badgeBg,
                         u.badge.borderColor,
                         u.badge.textColor
                       )}>
-                        <span className="text-sm">{u.badge.emoji}</span>
+                        <span>{u.badge.emoji}</span>
                         <span>{u.badge.title}</span>
                       </div>
+                    ) : (
+                      <div className="text-[8px] text-slate-400 font-black uppercase tracking-widest">Rising Star</div>
                     )}
                   </div>
                 </div>

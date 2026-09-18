@@ -859,6 +859,15 @@ export default function Dashboard() {
     }
   };
 
+  useEffect(() => {
+    if (foregroundToast) {
+      const timer = setTimeout(() => {
+        setForegroundToast(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [foregroundToast]);
+
   const handleMessageClick = (msg: Message) => {
     setSelectedMessage({ ...msg, read: true });
     markRead(msg.id, msg.read);
@@ -1027,9 +1036,9 @@ export default function Dashboard() {
       <AnimatePresence>
         {foregroundToast && (
           <motion.div
-            initial={{ opacity: 0, x: -50, scale: 0.9 }}
+            initial={{ opacity: 0, x: -20, scale: 0.9 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: -50, scale: 0.9 }}
+            exit={{ opacity: 0, x: -20, scale: 0.9 }}
             className="fixed top-4 left-4 z-[100] pointer-events-auto"
           >
             <div 
@@ -1043,21 +1052,18 @@ export default function Dashboard() {
                   if (found) handleMessageClick(found);
                 }
               }}
-              className="bg-indigo-600 text-white border border-indigo-400 rounded-full py-1.5 pl-2 pr-4 shadow-xl flex items-center gap-2 cursor-pointer hover:bg-indigo-700 transition-colors"
+              className="bg-indigo-600/95 backdrop-blur-md text-white border border-white/20 rounded-full py-0.5 pl-1 pr-2.5 shadow-xl flex items-center gap-1.5 cursor-pointer hover:bg-indigo-500 transition-all active:scale-95"
             >
-              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs shrink-0">
+              <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[8px] shrink-0">
                 🤫
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-tight leading-none">
+                <p className="text-[8px] font-black uppercase tracking-tight leading-none">
                   New Whisper
-                </p>
-                <p className="text-[9px] opacity-90 truncate max-w-[120px] leading-tight">
-                  {foregroundToast.body}
                 </p>
               </div>
               <X 
-                className="w-3 h-3 opacity-50 hover:opacity-100 ml-1" 
+                className="w-2 h-2 opacity-50 hover:opacity-100 ml-0.5" 
                 onClick={(e) => {
                   e.stopPropagation();
                   setForegroundToast(null);

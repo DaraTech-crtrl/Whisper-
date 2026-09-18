@@ -16,7 +16,8 @@ import {
   Users,
   MessageSquare,
   Zap,
-  Star
+  Star,
+  MoreHorizontal
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { collection, getDocs, getCountFromServer, query, limit } from "firebase/firestore";
@@ -39,12 +40,14 @@ export interface AdminRankedUser {
 
 interface AdminLeaderboardTabProps {
   isDarkMode: boolean;
+  autoSync?: boolean;
   onAddLog: (action: string, details: string, type: "info" | "success" | "warning" | "danger") => void;
   onShowToast: (title: string, message: string, type: "info" | "success" | "warning" | "danger") => void;
 }
 
 export default function AdminLeaderboardTab({
   isDarkMode,
+  autoSync = false,
   onAddLog,
   onShowToast
 }: AdminLeaderboardTabProps) {
@@ -71,8 +74,16 @@ export default function AdminLeaderboardTab({
       const countPromises = usersData.map(async ({ uid, data }) => {
         let count = 0;
         
-        // Priority 1: Check for any existing count fields on the user document
-        const possibleFields = ["messageCount", "receivedMessagesCount", "receivedCount", "totalMessages", "whispersCount"];
+        // Aggressive Priority 1: Check ALL known count fields on the user document
+        const possibleFields = [
+          "receivedMessagesCount", // The new standard
+          "messageCount",           // Old standard
+          "receivedCount",          // Legacy standard
+          "totalMessages", 
+          "whispersCount",
+          "totalReceived"
+        ];
+        
         for (const field of possibleFields) {
           if (typeof data[field] === "number") {
             count = Math.max(count, data[field]);
@@ -80,30 +91,22 @@ export default function AdminLeaderboardTab({
         }
 
         // Priority 2: Accurate server-side aggregation count from subcollection
-        try {
-          const msgCol = collection(db, "users", uid, "messages");
-          const countSnap = await getCountFromServer(msgCol);
-          const serverCount = countSnap.data().count;
-          
-          if (serverCount > 0) {
-            count = Math.max(count, serverCount);
-          } else {
-            // If server count says 0, double check with a small limit query to see if it's a permission/sync issue
-            const sampleSnap = await getDocs(query(msgCol, limit(1)));
-            if (!sampleSnap.empty) {
-              // If at least one exists, we might need to fetch all to be sure, 
-              // but for performance, we'll just fetch the full collection size if it's small or use the snapshot size
-              const fullSnap = await getDocs(msgCol);
-              count = Math.max(count, fullSnap.size);
-            }
-          }
-        } catch (countErr) {
-          // If server aggregation fails, fetch collection documents directly as ultimate fallback
+        // If Priority 1 gave us 0, we MUST check the subcollection
+        if (count === 0) {
           try {
-            const msgsSnap = await getDocs(collection(db, "users", uid, "messages"));
-            count = Math.max(count, msgsSnap.size);
-          } catch (err) {
-            console.warn(`Could not count messages for ${data.username || uid}:`, err);
+            const msgCol = collection(db, "users", uid, "messages");
+            const countSnap = await getCountFromServer(msgCol);
+            count = countSnap.data().count;
+            
+            // If still 0, double check if it's a permission/cache lag issue
+            if (count === 0) {
+              const fullSnap = await getDocs(query(msgCol, limit(50)));
+              if (!fullSnap.empty) {
+                count = fullSnap.size;
+              }
+            }
+          } catch (countErr) {
+            console.warn(`Fallback counting for ${uid}:`, countErr);
           }
         }
 
@@ -157,6 +160,79 @@ export default function AdminLeaderboardTab({
   useEffect(() => {
     loadLeaderboardData();
   }, []);
+
+  // Silent Auto-Sync Effect
+  useEffect(() => {
+    if (!autoSync) return;
+
+    const interval = setInterval(() => {
+      // Re-fetch data silently without full loading state if we already have data
+      const silentLoad = async () => {
+        try {
+          const usersSnap = await getDocs(collection(db, "users"));
+          const usersData: { uid: string; data: any }[] = [];
+
+          usersSnap.forEach((docSnap) => {
+            const d = docSnap.data();
+            if (!d.isDeleted && d.username) {
+              usersData.push({ uid: docSnap.id, data: d });
+            }
+          });
+
+          const countPromises = usersData.map(async ({ uid, data }) => {
+            let count = 0;
+            const possibleFields = ["messageCount", "receivedMessagesCount", "receivedCount", "totalMessages", "whispersCount"];
+            for (const field of possibleFields) {
+              if (typeof data[field] === "number") {
+                count = Math.max(count, data[field]);
+              }
+            }
+
+            try {
+              const msgCol = collection(db, "users", uid, "messages");
+              const countSnap = await getCountFromServer(msgCol);
+              const serverCount = countSnap.data().count;
+              if (serverCount > 0) {
+                count = Math.max(count, serverCount);
+              }
+            } catch (err) {}
+
+            return {
+              uid,
+              username: data.username,
+              displayName: data.displayName || data.username,
+              photoURL: data.photoURL || data.avatarUrl,
+              avatarUrl: data.avatarUrl || data.photoURL,
+              email: data.email || "",
+              messageCount: count,
+              rank: 0,
+              badge: null as AdminLeaderboardBadge | null
+            };
+          });
+
+          const settled = await Promise.all(countPromises);
+          settled.sort((a, b) => {
+            if (b.messageCount !== a.messageCount) return b.messageCount - a.messageCount;
+            return a.username.localeCompare(b.username);
+          });
+
+          const ranked: AdminRankedUser[] = settled.map((u, idx) => {
+            const rank = idx + 1;
+            const badge = (rank <= 10 && u.messageCount > 0) ? getAdminTop10Badge(rank) : null;
+            return { ...u, rank, badge };
+          });
+
+          setRankedUsers(ranked);
+        } catch (err) {
+          console.warn("Leaderboard silent sync failed:", err);
+        }
+      };
+
+      silentLoad();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [autoSync]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -291,24 +367,24 @@ export default function AdminLeaderboardTab({
       <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl p-4 shadow-sm space-y-4">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
           {/* Tabs Group */}
-          <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 w-full lg:w-[400px]">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 w-full lg:w-auto overflow-x-auto scrollbar-none">
             <button
               type="button"
               onClick={() => setSelectedRankFilter("all")}
               className={cn(
-                "px-2 py-1.5 rounded-lg font-bold transition-all cursor-pointer text-[10px] sm:text-xs text-center",
+                "px-4 py-1.5 rounded-lg font-bold transition-all cursor-pointer text-[10px] sm:text-xs text-center flex-1 lg:flex-none whitespace-nowrap",
                 selectedRankFilter === "all"
                   ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
                   : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
               )}
             >
-              All ({rankedUsers.length})
+              All Ranked ({rankedUsers.length})
             </button>
             <button
               type="button"
               onClick={() => setSelectedRankFilter("top10")}
               className={cn(
-                "px-2 py-1.5 rounded-lg font-bold transition-all cursor-pointer text-[10px] sm:text-xs text-center",
+                "px-4 py-1.5 rounded-lg font-bold transition-all cursor-pointer text-[10px] sm:text-xs text-center flex-1 lg:flex-none whitespace-nowrap",
                 selectedRankFilter === "top10"
                   ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
                   : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
@@ -320,13 +396,13 @@ export default function AdminLeaderboardTab({
               type="button"
               onClick={() => setSelectedRankFilter("active")}
               className={cn(
-                "px-2 py-1.5 rounded-lg font-bold transition-all cursor-pointer text-[10px] sm:text-xs text-center",
+                "px-4 py-1.5 rounded-lg font-bold transition-all cursor-pointer text-[10px] sm:text-xs text-center flex-1 lg:flex-none whitespace-nowrap",
                 selectedRankFilter === "active"
                   ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
                   : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
               )}
             >
-              &ge; 1 Msg
+              Active (&ge;1)
             </button>
           </div>
 
@@ -372,16 +448,24 @@ export default function AdminLeaderboardTab({
         </div>
       </div>
 
-      {/* UNIQUE ADMIN TOP 10 HONOR ROLL - REDESIGNED PODIUM STYLE */}
+      {/* UNIQUE ADMIN TOP 10 HONOR ROLL - MAJESTIC PODIUM STYLE */}
       {selectedRankFilter === "all" && !searchQuery && rankedUsers.length > 0 && (
-        <div className="space-y-8 py-4">
+        <div className="space-y-4 py-8 px-4 bg-gradient-to-b from-indigo-50/30 via-transparent to-transparent dark:from-indigo-950/10 rounded-3xl mb-6">
+          <div className="text-center space-y-1 mb-10">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center justify-center gap-2">
+              <Sparkles className="w-5 h-5 text-amber-500 fill-current" />
+              Whisper Hall of Fame
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Global Top Influencers</p>
+          </div>
+
           {/* Podium Row */}
-          <div className="grid grid-cols-3 items-end gap-2 sm:gap-6 max-w-4xl mx-auto pt-10 pb-4 px-2">
+          <div className="grid grid-cols-3 items-end gap-3 sm:gap-10 max-w-3xl mx-auto pt-6">
             {/* Rank 2 - Silver */}
             {rankedUsers[1] && (
-              <div className="flex flex-col items-center group">
-                <div className="relative mb-3">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-slate-300 dark:border-slate-500 shadow-lg group-hover:scale-105 transition-transform">
+              <div className="flex flex-col items-center group relative">
+                <div className="relative mb-4">
+                  <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-[2rem] overflow-hidden border-4 border-slate-300 dark:border-slate-500 shadow-xl group-hover:-translate-y-2 transition-all duration-500">
                     <UserAvatar 
                       name={rankedUsers[1].displayName} 
                       username={rankedUsers[1].username}
@@ -389,29 +473,36 @@ export default function AdminLeaderboardTab({
                       className="w-full h-full object-cover" 
                     />
                   </div>
-                  <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 border-2 border-white dark:border-slate-900 flex items-center justify-center text-lg shadow-sm">
+                  <div className="absolute -top-3 -right-3 w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-xl shadow-md transform rotate-12">
                     🥈
                   </div>
                 </div>
-                <div className="text-center w-full">
-                  <div className="font-bold text-[11px] sm:text-xs text-slate-900 dark:text-white truncate px-1">
+                <div className="text-center w-full mb-3">
+                  <div className="font-black text-xs text-slate-900 dark:text-white truncate">
                     @{rankedUsers[1].username}
                   </div>
-                  <div className="font-black text-sm text-slate-500 dark:text-slate-400">
-                    {rankedUsers[1].messageCount}
+                  <div className="flex items-center justify-center gap-1 mt-0.5">
+                    <TrendingUp className="w-3 h-3 text-slate-400" />
+                    <span className="font-mono font-black text-sm text-slate-600 dark:text-slate-400">
+                      {rankedUsers[1].messageCount.toLocaleString()}
+                    </span>
                   </div>
                 </div>
-                <div className="w-full h-16 sm:h-20 bg-slate-200/50 dark:bg-slate-800/50 rounded-t-2xl mt-2 border-x border-t border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center">
-                  <span className="text-xl sm:text-2xl font-black text-slate-400 dark:text-slate-600 opacity-50">2</span>
+                {/* Visual Step */}
+                <div className="w-full h-20 sm:h-28 bg-gradient-to-t from-slate-200/80 to-slate-100/50 dark:from-slate-800/80 dark:to-slate-900/50 rounded-t-3xl border-x border-t border-slate-200 dark:border-slate-700 shadow-inner flex items-center justify-center">
+                  <span className="text-4xl sm:text-6xl font-black text-slate-400/20 dark:text-slate-600/20">2</span>
                 </div>
               </div>
             )}
 
             {/* Rank 1 - Gold */}
             {rankedUsers[0] && (
-              <div className="flex flex-col items-center group -mt-8">
-                <div className="relative mb-4 scale-110 sm:scale-125 origin-bottom">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-4 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.3)] group-hover:scale-105 transition-transform">
+              <div className="flex flex-col items-center group relative -mt-16">
+                <div className="relative mb-5 scale-110 sm:scale-125 origin-bottom">
+                  {/* Decorative Glow */}
+                  <div className="absolute -inset-4 bg-amber-400/20 dark:bg-amber-400/10 blur-2xl rounded-full animate-pulse" />
+                  
+                  <div className="relative w-20 h-20 sm:w-28 sm:h-28 rounded-[2.5rem] overflow-hidden border-4 border-amber-400 shadow-[0_10px_40px_rgba(251,191,36,0.4)] group-hover:-translate-y-3 transition-all duration-700 z-10">
                     <UserAvatar 
                       name={rankedUsers[0].displayName} 
                       username={rankedUsers[0].username}
@@ -419,30 +510,34 @@ export default function AdminLeaderboardTab({
                       className="w-full h-full object-cover" 
                     />
                   </div>
-                  <div className="absolute -top-4 -right-4 w-10 h-10 rounded-full bg-amber-400 flex items-center justify-center text-xl shadow-lg animate-bounce duration-1000">
+                  <div className="absolute -top-5 -right-5 w-12 h-12 rounded-2xl bg-amber-400 flex items-center justify-center text-2xl shadow-xl z-20 animate-bounce duration-[2000ms]">
                     👑
                   </div>
                 </div>
-                <div className="text-center w-full z-10">
-                  <div className="font-black text-xs sm:text-sm text-amber-600 dark:text-amber-400 truncate px-1 uppercase tracking-tight">
+                <div className="text-center w-full z-10 mb-4">
+                  <div className="font-black text-sm text-amber-600 dark:text-amber-400 uppercase tracking-tighter">
                     @{rankedUsers[0].username}
                   </div>
-                  <div className="font-black text-base sm:text-lg text-slate-900 dark:text-white">
-                    {rankedUsers[0].messageCount}
+                  <div className="flex items-center justify-center gap-1.5 mt-0.5">
+                    <Sparkles className="w-4 h-4 text-amber-500 fill-current" />
+                    <span className="font-mono font-black text-xl text-slate-900 dark:text-white">
+                      {rankedUsers[0].messageCount.toLocaleString()}
+                    </span>
                   </div>
                 </div>
-                <div className="w-full h-24 sm:h-32 bg-amber-400/10 dark:bg-amber-400/5 rounded-t-2xl mt-2 border-x border-t border-amber-400/40 relative overflow-hidden group shadow-[inset_0_2px_10px_rgba(251,191,36,0.1)] flex flex-col items-center justify-center">
-                   <div className="absolute inset-0 bg-gradient-to-b from-amber-400/10 to-transparent pointer-events-none" />
-                   <span className="text-3xl sm:text-5xl font-black text-amber-500/30">1</span>
+                {/* Visual Step */}
+                <div className="w-full h-32 sm:h-44 bg-gradient-to-t from-amber-400/20 to-amber-400/5 dark:from-amber-400/10 dark:to-transparent rounded-t-[2.5rem] border-x border-t border-amber-400/50 shadow-[inset_0_2px_20px_rgba(251,191,36,0.15)] flex items-center justify-center relative overflow-hidden">
+                  <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-from)_0%,_transparent_70%)] from-amber-500" />
+                  <span className="text-6xl sm:text-8xl font-black text-amber-500/20 relative z-10">1</span>
                 </div>
               </div>
             )}
 
             {/* Rank 3 - Bronze */}
             {rankedUsers[2] && (
-              <div className="flex flex-col items-center group">
-                <div className="relative mb-3">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-amber-700/50 dark:border-amber-800/50 shadow-lg group-hover:scale-105 transition-transform">
+              <div className="flex flex-col items-center group relative">
+                <div className="relative mb-4">
+                  <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-[2rem] overflow-hidden border-4 border-amber-800/40 dark:border-amber-700/40 shadow-xl group-hover:-translate-y-2 transition-all duration-500">
                     <UserAvatar 
                       name={rankedUsers[2].displayName} 
                       username={rankedUsers[2].username}
@@ -450,20 +545,24 @@ export default function AdminLeaderboardTab({
                       className="w-full h-full object-cover" 
                     />
                   </div>
-                  <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-amber-700 border-2 border-white dark:border-slate-900 flex items-center justify-center text-lg shadow-sm">
+                  <div className="absolute -top-3 -right-3 w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 border-2 border-amber-800/20 dark:border-amber-700/20 flex items-center justify-center text-xl shadow-md transform -rotate-12">
                     🥉
                   </div>
                 </div>
-                <div className="text-center w-full">
-                  <div className="font-bold text-[11px] sm:text-xs text-slate-900 dark:text-white truncate px-1">
+                <div className="text-center w-full mb-3">
+                  <div className="font-black text-xs text-slate-900 dark:text-white truncate">
                     @{rankedUsers[2].username}
                   </div>
-                  <div className="font-black text-sm text-amber-800 dark:text-amber-600">
-                    {rankedUsers[2].messageCount}
+                  <div className="flex items-center justify-center gap-1 mt-0.5">
+                    <TrendingUp className="w-3 h-3 text-amber-700/60" />
+                    <span className="font-mono font-black text-sm text-amber-800 dark:text-amber-600">
+                      {rankedUsers[2].messageCount.toLocaleString()}
+                    </span>
                   </div>
                 </div>
-                <div className="w-full h-12 sm:h-16 bg-amber-900/10 dark:bg-amber-900/5 rounded-t-2xl mt-2 border-x border-t border-amber-900/20 dark:border-amber-900/30 flex flex-col items-center justify-center">
-                  <span className="text-xl sm:text-2xl font-black text-amber-900/20 dark:text-amber-900/30">3</span>
+                {/* Visual Step */}
+                <div className="w-full h-14 sm:h-20 bg-gradient-to-t from-amber-900/10 to-amber-900/5 dark:from-amber-900/10 dark:to-transparent rounded-t-3xl border-x border-t border-amber-900/20 dark:border-amber-900/30 shadow-inner flex items-center justify-center">
+                  <span className="text-3xl sm:text-5xl font-black text-amber-900/10 dark:text-amber-900/20">3</span>
                 </div>
               </div>
             )}
@@ -475,196 +574,228 @@ export default function AdminLeaderboardTab({
       <div className="space-y-4">
         {/* User Items: List or Cards View */}
         {filteredUsers.length === 0 ? (
-          <div className="p-12 text-center bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl">
-            <Users className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-400 text-xs font-medium">No ranked users match the current filter.</p>
+          <div className="p-12 text-center bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 rounded-[2.5rem]">
+            <Users className="w-10 h-10 text-slate-300 mx-auto mb-3 opacity-50" />
+            <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">No Legends Found</p>
+            <p className="text-slate-500 text-[11px] mt-1">Adjust filters or search query to find more users.</p>
           </div>
         ) : viewMode === "list" ? (
-          /* Table / List View */
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                  <th className="py-2.5 px-3">Rank</th>
-                  <th className="py-2.5 px-3">User</th>
-                  <th className="py-2.5 px-3">Admin Honor Badge</th>
-                  <th className="py-2.5 px-3 text-right">Messages Received</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
-                {filteredUsers.slice(selectedRankFilter === "all" && !searchQuery ? 3 : 0).map((u) => (
-                  <tr key={u.uid} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3 px-3">
-                      <span className={cn(
-                        "inline-flex items-center justify-center w-7 h-7 rounded-lg font-mono font-black text-xs",
-                        u.rank === 1 ? "bg-amber-400 text-slate-950" :
-                        u.rank === 2 ? "bg-slate-300 dark:bg-slate-600 text-slate-900 dark:text-white" :
-                        u.rank === 3 ? "bg-amber-700 text-white" :
-                        "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                      )}>
-                        #{u.rank}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
-                          <UserAvatar 
-                            name={u.displayName} 
-                            username={u.username}
-                            photoURL={u.photoURL} 
-                            className="w-full h-full object-cover" 
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-bold text-slate-900 dark:text-white truncate">
-                            {u.displayName || u.username}
-                          </div>
-                          <div className="text-[11px] text-slate-400 truncate">
-                            @{u.username}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-3">
-                      {u.badge ? (
-                        <div className={cn(
-                          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-black shadow-2xs",
-                          u.badge.badgeBg,
-                          u.badge.borderColor,
-                          u.badge.textColor
-                        )}>
-                          <span>{u.badge.emoji}</span>
-                          <span>{u.badge.title}</span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 text-[11px] italic">
-                          Standard Recipient
-                        </span>
-                      )}
-                    </td>
-
-                    <td className="py-3 px-3 text-right">
-                      <span className="font-mono font-black text-sm text-slate-900 dark:text-white">
-                        {u.messageCount}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-3 text-right">
-                      <Link
-                        to={`/u/${u.username}`}
-                        target="_blank"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline bg-indigo-50 dark:bg-indigo-950/60 px-2 py-1 rounded-lg"
-                      >
-                        <span>Profile</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </Link>
-                    </td>
+          /* Table / List View - Redesigned as a Gaming/Majestic Directory */
+          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden transition-all duration-500">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800 text-slate-400 font-black uppercase tracking-widest text-[9px]">
+                    <th className="py-5 px-6">Rank</th>
+                    <th className="py-5 px-6">Influencer</th>
+                    <th className="py-5 px-6">Achievement</th>
+                    <th className="py-5 px-6 text-right">Activity Volume</th>
+                    <th className="py-5 px-6 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+                  {filteredUsers.slice(selectedRankFilter === "all" && !searchQuery ? 3 : 0).map((u) => (
+                    <tr key={u.uid} className="group hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 transition-all duration-300">
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "flex items-center justify-center min-w-[34px] h-8 px-2 rounded-xl font-mono font-black text-xs shadow-sm border transition-all group-hover:scale-110",
+                            u.rank === 1 ? "bg-amber-400 border-amber-500 text-slate-950" :
+                            u.rank === 2 ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white" :
+                            u.rank === 3 ? "bg-amber-900 border-amber-950 text-white" :
+                            "bg-white dark:bg-slate-950 border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400 group-hover:border-indigo-200 dark:group-hover:border-indigo-700"
+                          )}>
+                            #{u.rank}
+                          </div>
+                          {u.rank <= 3 && <Sparkles className="w-4 h-4 text-amber-500 fill-current animate-pulse shrink-0" />}
+                        </div>
+                      </td>
+
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3.5">
+                          <div className="relative">
+                            <div className="w-11 h-11 rounded-[1.25rem] overflow-hidden shrink-0 border-2 border-white dark:border-slate-800 shadow-md group-hover:rotate-6 transition-transform">
+                              <UserAvatar 
+                                name={u.displayName} 
+                                username={u.username}
+                                photoURL={u.photoURL} 
+                                className="w-full h-full object-cover" 
+                              />
+                            </div>
+                            {u.rank <= 10 && <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 shadow-sm" title="Active Top Tier" />}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-black text-slate-900 dark:text-white truncate text-sm tracking-tight leading-none mb-1">
+                              {u.displayName || u.username}
+                            </div>
+                            <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-widest truncate">
+                              @{u.username}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="py-4 px-6">
+                        {u.badge ? (
+                          <div className={cn(
+                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-[10px] font-black uppercase tracking-widest shadow-2xs group-hover:shadow-md transition-shadow",
+                            u.badge.badgeBg,
+                            u.badge.borderColor,
+                            u.badge.textColor
+                          )}>
+                            <span className="text-xs">{u.badge.emoji}</span>
+                            <span>{u.badge.title}</span>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700" />
+                            Rising Star
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-4 px-6 text-right">
+                        <div className="flex flex-col items-end">
+                          <div className="text-base font-black text-slate-900 dark:text-white font-mono leading-none mb-0.5">
+                            {u.messageCount.toLocaleString()}
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
+                            <TrendingUp className="w-2.5 h-2.5" />
+                            Whispers
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="py-4 px-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Link
+                            to={`/u/${u.username}`}
+                            target="_blank"
+                            className="p-2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-2xs"
+                            title="View Public Profile"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </Link>
+                          <button
+                            className="p-2 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-slate-900 dark:hover:bg-slate-200 hover:text-white dark:hover:text-slate-900 transition-all shadow-2xs"
+                          >
+                            <MoreHorizontal className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : (
-          /* Cards Grid View */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          /* Cards Grid View - Redesigned for Maximum Impact */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredUsers.slice(selectedRankFilter === "all" && !searchQuery ? 3 : 0).map((u) => (
               <div
                 key={u.uid}
                 className={cn(
-                  "group relative p-5 rounded-3xl border transition-all duration-300 flex flex-col justify-between shadow-sm hover:shadow-xl hover:-translate-y-1 overflow-hidden",
+                  "group relative p-6 rounded-[2.5rem] border transition-all duration-500 flex flex-col justify-between shadow-xl hover:shadow-2xl hover:-translate-y-2 overflow-hidden",
                   u.rank === 1 ? "bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-900 border-amber-300 dark:border-amber-500/30" :
                   u.rank === 2 ? "bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/40 dark:to-slate-900 border-slate-300 dark:border-slate-600" :
-                  u.rank === 3 ? "bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/20 dark:to-slate-900 border-orange-300 dark:border-orange-500/30" :
-                  u.badge 
-                    ? `bg-white dark:bg-slate-900 ${u.badge.borderColor}`
-                    : "bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800"
+                  u.rank === 3 ? "bg-gradient-to-br from-amber-50/30 to-white dark:from-amber-950/10 dark:to-slate-900 border-amber-700/30 dark:border-amber-800/20" :
+                  "bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 shadow-indigo-500/5"
                 )}
               >
                 {/* Background rank number decoration */}
-                <div className="absolute -right-4 -top-8 text-8xl font-black text-slate-100 dark:text-slate-800/40 select-none pointer-events-none group-hover:scale-110 transition-transform duration-500">
+                <div className="absolute -right-6 -top-12 text-[10rem] font-black text-slate-100/50 dark:text-slate-800/20 select-none pointer-events-none group-hover:scale-110 group-hover:text-indigo-500/5 transition-all duration-700">
                   {u.rank}
                 </div>
 
-                {/* Header: Rank + Badge if any */}
-                <div className="relative flex items-center justify-between gap-2 mb-4">
-                  <div className={cn(
-                    "flex items-center gap-1.5 px-3 py-1 rounded-xl font-mono font-black text-xs shadow-sm",
-                    u.rank === 1 ? "bg-amber-400 text-slate-950" :
-                    u.rank === 2 ? "bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white" :
-                    u.rank === 3 ? "bg-amber-700 text-white" :
-                    "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                  )}>
-                    <span>RANK</span>
-                    <span>#{u.rank}</span>
-                  </div>
-
-                  {u.badge && (
+                <div className="relative z-10">
+                  {/* Card Header: Rank & Actions */}
+                  <div className="flex items-center justify-between gap-2 mb-6">
                     <div className={cn(
-                      "inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-xl border shadow-xs animate-pulse-slow",
-                      u.badge.badgeBg,
-                      u.badge.borderColor,
-                      u.badge.textColor
+                      "flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl font-mono font-black text-xs shadow-md border",
+                      u.rank === 1 ? "bg-amber-400 border-amber-500 text-slate-950" :
+                      u.rank === 2 ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white" :
+                      u.rank === 3 ? "bg-amber-900 border-amber-950 text-white" :
+                      "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400"
                     )}>
-                      <span>{u.badge.emoji}</span>
-                      <span className="uppercase tracking-wider">{u.badge.shortTitle}</span>
+                      <span>RANK</span>
+                      <span>#{u.rank}</span>
                     </div>
-                  )}
-                </div>
 
-                {/* User Identity Info */}
-                <div className="relative flex items-center gap-4 mb-5">
-                  <div className={cn(
-                    "w-14 h-14 rounded-2xl overflow-hidden shrink-0 border shadow-md p-0.5 bg-white dark:bg-slate-800 transition-transform group-hover:rotate-3",
-                    u.rank === 1 ? "border-amber-400 ring-4 ring-amber-400/10" :
-                    u.rank === 2 ? "border-slate-300 ring-4 ring-slate-300/10" :
-                    u.rank === 3 ? "border-amber-700/50 ring-4 ring-amber-700/10" :
-                    "border-slate-100 dark:border-slate-700"
-                  )}>
-                    <UserAvatar 
-                      name={u.displayName} 
-                      username={u.username}
-                      photoURL={u.photoURL} 
-                      className="w-full h-full object-cover rounded-[14px]" 
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        to={`/u/${u.username}`}
+                        target="_blank"
+                        className="w-8 h-8 flex items-center justify-center bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm border border-slate-100 dark:border-slate-700"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="font-black text-base text-slate-900 dark:text-white truncate tracking-tight">
+
+                  {/* User Profile Info */}
+                  <div className="flex flex-col items-center text-center mb-6">
+                    <div className="relative mb-3">
+                      <div className={cn(
+                        "w-20 h-20 rounded-[2rem] overflow-hidden border-4 border-white dark:border-slate-800 shadow-lg group-hover:rotate-6 transition-transform duration-500",
+                        u.rank === 1 ? "ring-4 ring-amber-400/20" :
+                        u.rank === 2 ? "ring-4 ring-slate-400/10" :
+                        u.rank === 3 ? "ring-4 ring-amber-900/10" : ""
+                      )}>
+                        <UserAvatar 
+                          name={u.displayName} 
+                          username={u.username}
+                          photoURL={u.photoURL} 
+                          className="w-full h-full object-cover" 
+                        />
+                      </div>
+                      {u.rank <= 3 && (
+                        <div className="absolute -bottom-2 -right-2 w-9 h-9 rounded-2xl bg-white dark:bg-slate-800 shadow-md border border-slate-100 dark:border-slate-700 flex items-center justify-center text-lg animate-bounce duration-[3000ms]">
+                          {u.rank === 1 ? "🥇" : u.rank === 2 ? "🥈" : "🥉"}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <h4 className="font-black text-lg text-slate-900 dark:text-white truncate max-w-full tracking-tight leading-tight">
                       {u.displayName || u.username}
                     </h4>
-                    <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 truncate">
+                    <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mt-0.5">
                       @{u.username}
                     </p>
-                    {u.email && (
-                      <p className="text-[10px] text-slate-400 truncate font-mono mt-0.5">
-                        {u.email}
-                      </p>
+                  </div>
+
+                  {/* Achievement & Stats */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 px-1">
+                      <span>Performance</span>
+                      <span>Metrics</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-slate-50 dark:bg-slate-950/80 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1.5">Volume</p>
+                        <p className="text-xl font-black text-slate-900 dark:text-white font-mono leading-none">
+                          {u.messageCount.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-950/80 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col justify-center items-center">
+                        <TrendingUp className={cn("w-5 h-5 mb-1", u.rank <= 10 ? "text-emerald-500" : "text-indigo-500")} />
+                        <span className="text-[9px] font-black uppercase text-slate-500">Momentum</span>
+                      </div>
+                    </div>
+
+                    {u.badge && (
+                      <div className={cn(
+                        "w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border text-[10px] font-black uppercase tracking-widest shadow-2xs group-hover:shadow-md transition-all",
+                        u.badge.badgeBg,
+                        u.badge.borderColor,
+                        u.badge.textColor
+                      )}>
+                        <span className="text-sm">{u.badge.emoji}</span>
+                        <span>{u.badge.title}</span>
+                      </div>
                     )}
                   </div>
-                </div>
-
-                {/* Footer: Messages Received & Profile Link */}
-                <div className="relative pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Received</span>
-                    <div className="flex items-baseline gap-1">
-                      <span className="font-mono font-black text-slate-900 dark:text-white text-xl">
-                        {u.messageCount}
-                      </span>
-                      <span className="text-slate-400 text-[11px] font-bold">whispers</span>
-                    </div>
-                  </div>
-
-                  <Link
-                    to={`/u/${u.username}`}
-                    target="_blank"
-                    className="flex items-center gap-1.5 text-[11px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 px-3.5 py-2 rounded-2xl transition-all shadow-xs active:scale-95"
-                  >
-                    <span>INSPECT</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </Link>
                 </div>
               </div>
             ))}

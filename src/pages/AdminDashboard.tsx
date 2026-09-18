@@ -68,8 +68,21 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc,
-  serverTimestamp 
+  serverTimestamp,
+  writeBatch,
+  getCountFromServer,
+  query,
+  where,
+  orderBy,
+  limit,
+  Timestamp
 } from "firebase/firestore";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 import { db } from "../lib/firebase";
 import { getAssetUrl } from "../lib/assets";
 import { motion, AnimatePresence } from "motion/react";
@@ -194,8 +207,25 @@ export default function AdminDashboard() {
   // Ratings & Feedback State
   const [ratingsList, setRatingsList] = useState<RatingData[]>([]);
   const [isLoadingRatings, setIsLoadingRatings] = useState(false);
+  const [ratingViewMode, setRatingViewMode] = useState<"list" | "cards">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("whisper_admin_rating_view_mode");
+      if (saved === "list" || saved === "cards") return saved;
+      if (window.innerWidth < 768) return "cards";
+    }
+    return "list";
+  });
+
+  const handleSetRatingViewMode = (mode: "list" | "cards") => {
+    setRatingViewMode(mode);
+    try {
+      localStorage.setItem("whisper_admin_rating_view_mode", mode);
+    } catch (e) {}
+  };
   const [ratingFilter, setRatingFilter] = useState<"all" | "5star" | "4star" | "3star" | "low">("all");
   const [ratingSearchQuery, setRatingSearchQuery] = useState("");
+  const [autoSync, setAutoSync] = useState(true);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   // Remote System Error Logs State
   const [systemLogsList, setSystemLogsList] = useState<SystemLogRecord[]>([]);
@@ -804,12 +834,120 @@ export default function AdminDashboard() {
     showToast("Export Complete", `Exported ${usersList.length} user records to CSV`, "success");
   };
 
+  const handleRecalculateAnalytics = async () => {
+    if (isRecalculating) return;
+    if (!window.confirm("This will force-count every message subcollection for all users to sync the leaderboard. Continue?")) return;
+    
+    setIsRecalculating(true);
+    addLog("Manual Recalculation", "Starting full database message volume sync...", "warning");
+    
+    try {
+      const snap = await getDocs(collection(db, "users"));
+      let updatedCount = 0;
+      
+      // Firestore batches have a 500 limit. We will use individual updates for reliability 
+      // or chunk the batches if many users exist.
+      // For simplicity and immediate fix, we'll do them in parallel with a concurrency limit.
+      const BATCH_LIMIT = 500;
+      const chunks = [];
+      for (let i = 0; i < snap.docs.length; i += BATCH_LIMIT) {
+        chunks.push(snap.docs.slice(i, i + BATCH_LIMIT));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        const promises = chunk.map(async (userDoc) => {
+          const userId = userDoc.id;
+          const msgCol = collection(db, "users", userId, "messages");
+          
+          // Try to get accurate count
+          let count = 0;
+          try {
+            const countSnap = await getCountFromServer(msgCol);
+            count = countSnap.data().count;
+            
+            // Aggressive fallback if server count is suspicious (0)
+            if (count === 0) {
+              const checkSnap = await getDocs(query(msgCol, limit(1)));
+              if (!checkSnap.empty) {
+                const fullCheck = await getDocs(msgCol);
+                count = fullCheck.size;
+              }
+            }
+          } catch (e) {
+            console.warn(`Could not count for ${userId}`, e);
+          }
+          
+          batch.update(doc(db, "users", userId), {
+            messageCount: count,
+            receivedMessagesCount: count,
+            receivedCount: count, // Legacy support
+            lastSyncAt: serverTimestamp()
+          });
+          updatedCount++;
+        });
+        
+        await Promise.all(promises);
+        await batch.commit();
+      }
+      
+      await fetchUsers(); // Refresh local state
+      showToast("Sync Complete", `Successfully recalculated volume for ${updatedCount} users.`, "success");
+      addLog("Recalculation Success", `Synchronized ${updatedCount} user message counters`, "success");
+    } catch (err: any) {
+      console.error("Recalculation failed:", err);
+      showToast("Sync Failed", err?.message || "Error during database aggregation", "danger");
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   // Copy helper
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedUid(id);
     setTimeout(() => setCopiedUid(null), 2000);
   };
+
+  const [isRecalculating, setIsRecalculating] = useState(false);
+
+  // Global Auto-Sync Effect (3 seconds)
+  useEffect(() => {
+    if (!isAuthenticated || !autoSync) return;
+
+    const interval = setInterval(() => {
+      // Background refresh without triggering full loading states for better UX
+      const silentFetch = async () => {
+        try {
+          // Fetch critical stats/data
+          const usersSnap = await getDocs(collection(db, "users"));
+          const users: UserProfileData[] = [];
+          usersSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            if (!data.isDeleted) users.push({ uid: docSnap.id, ...data } as UserProfileData);
+          });
+          users.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+          setUsersList(users);
+
+          const ratingsSnap = await getDocs(collection(db, "ratings"));
+          const ratings: RatingData[] = [];
+          ratingsSnap.forEach(docSnap => ratings.push({ id: docSnap.id, ...docSnap.data() } as RatingData));
+          ratings.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+          setRatingsList(ratings);
+
+          fetchSettings();
+          fetchSystemLogs();
+          setLastSyncTime(new Date());
+        } catch (err) {
+          console.warn("Silent background sync failed:", err);
+        }
+      };
+      
+      silentFetch();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, autoSync]);
 
   // Load Initial Admin Data
   useEffect(() => {
@@ -1327,15 +1465,33 @@ export default function AdminDashboard() {
             )}
 
             {/* DB Health Badge */}
-            <button
-              onClick={runLatencyTest}
-              disabled={isTestingLatency}
-              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-600 dark:text-slate-300"
-              title="Click to ping Firestore"
-            >
-              <Radio className={`w-3.5 h-3.5 ${isTestingLatency ? "animate-pulse text-indigo-600" : "text-emerald-500"}`} />
-              <span>{dbLatency !== null ? (dbLatency >= 0 ? `${dbLatency}ms` : "Error") : "Ping..."}</span>
-            </button>
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl">
+              <div 
+                onClick={() => setAutoSync(!autoSync)}
+                className="flex items-center gap-1.5 cursor-pointer group"
+                title={autoSync ? "Auto-Syncing every 3s (Click to pause)" : "Auto-Sync paused (Click to resume)"}
+              >
+                <div className={`w-2 h-2 rounded-full ${autoSync ? "bg-emerald-500 animate-ping" : "bg-slate-400"}`} />
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tight">
+                  {autoSync ? "Live Sync" : "Sync Paused"}
+                </span>
+                {lastSyncTime && (
+                  <span className="text-[8px] text-slate-400 dark:text-slate-500 ml-1 font-mono">
+                    {lastSyncTime.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                )}
+              </div>
+              <div className="w-px h-3 bg-slate-200 dark:bg-slate-800 mx-1" />
+              <button
+                onClick={runLatencyTest}
+                disabled={isTestingLatency}
+                className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600 dark:text-slate-300"
+                title="Click to ping Firestore"
+              >
+                <Radio className={`w-3 h-3 ${isTestingLatency ? "animate-pulse text-indigo-600" : "text-emerald-500"}`} />
+                <span>{dbLatency !== null ? (dbLatency >= 0 ? `${dbLatency}ms` : "Err") : "Ping"}</span>
+              </button>
+            </div>
 
             {/* Maintenance Mode Status Pill */}
             {settings.maintenanceMode ? (
@@ -1384,7 +1540,7 @@ export default function AdminDashboard() {
               {/* Stat Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
-                <div className={`p-5 rounded-3xl border ${cardClasses}`}>
+                <div className={`p-5 rounded-3xl border relative group overflow-hidden ${cardClasses}`}>
                   <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-3">
                     <span>Total Registered Users</span>
                     <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-100 dark:border-indigo-500/20">
@@ -1395,6 +1551,15 @@ export default function AdminDashboard() {
                   <div className="mt-2 text-xs text-slate-500 flex items-center gap-1">
                     <span className="text-emerald-600 dark:text-emerald-400 font-bold">Live</span> Firestore records
                   </div>
+                  
+                  <button
+                    onClick={handleRecalculateAnalytics}
+                    disabled={isRecalculating}
+                    className="absolute bottom-2 right-2 p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                    title="Force Recalculate All Message Counts"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isRecalculating ? "animate-spin" : ""}`} />
+                  </button>
                 </div>
 
                 <div className={`p-5 rounded-3xl border ${cardClasses}`}>
@@ -2171,6 +2336,23 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                  <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-xl mr-2">
+                    <button
+                      onClick={() => handleSetRatingViewMode("list")}
+                      className={`p-1.5 rounded-lg transition-all ${ratingViewMode === "list" ? "bg-white dark:bg-slate-800 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-400 hover:text-slate-600"}`}
+                      title="List View"
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleSetRatingViewMode("cards")}
+                      className={`p-1.5 rounded-lg transition-all ${ratingViewMode === "cards" ? "bg-white dark:bg-slate-800 shadow-sm text-indigo-600 dark:text-indigo-400" : "text-slate-400 hover:text-slate-600"}`}
+                      title="Card View"
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                  </div>
+
                   {[
                     { id: "all", label: `All (${ratingsList.length})` },
                     { id: "5star", label: `5 Stars (${count5Star})` },
@@ -2202,9 +2384,12 @@ export default function AdminDashboard() {
 
               </div>
 
-              {/* Ratings List Table */}
-              <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
-                {isLoadingRatings ? (
+              {/* Ratings List Table or Cards */}
+              <div className={cn(
+                ratingViewMode === "list" ? "rounded-3xl border overflow-hidden" : "",
+                cardClasses
+              )}>
+                {isLoadingRatings && ratingsList.length === 0 ? (
                   <div className="p-12 text-center text-slate-400 space-y-3">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
                     <p className="text-xs">Fetching ratings & feedback from Firestore...</p>
@@ -2215,7 +2400,7 @@ export default function AdminDashboard() {
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No ratings match your filter</p>
                     <p className="text-xs text-slate-400">Users will see rating prompts as they interact with Whisper.</p>
                   </div>
-                ) : (
+                ) : ratingViewMode === "list" ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
@@ -2223,8 +2408,7 @@ export default function AdminDashboard() {
                           <th className="p-4">User</th>
                           <th className="p-4">Rating</th>
                           <th className="p-4">Feedback Comment</th>
-                          <th className="p-4">Device</th>
-                          <th className="p-4">Submitted At</th>
+                          <th className="p-4 text-right">Submitted At</th>
                           <th className="p-4 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -2273,11 +2457,7 @@ export default function AdminDashboard() {
                               )}
                             </td>
 
-                            <td className="p-4 text-slate-500 dark:text-slate-400 text-[11px]">
-                              {ratingDoc.deviceInfo || "Web App"}
-                            </td>
-
-                            <td className="p-4 text-slate-400 text-[11px]">
+                            <td className="p-4 text-right text-slate-400 text-[11px]">
                               {ratingDoc.createdAt?.seconds 
                                 ? new Date(ratingDoc.createdAt.seconds * 1000).toLocaleString()
                                 : "Just now"
@@ -2298,9 +2478,72 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
                   </div>
+                ) : (
+                  /* Cards View for Ratings */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
+                    {filteredRatings.map((ratingDoc) => (
+                      <div 
+                        key={ratingDoc.id}
+                        className="bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 flex flex-col justify-between hover:shadow-lg transition-all group"
+                      >
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-black flex items-center justify-center border border-indigo-500/20 shadow-xs">
+                                {ratingDoc.username?.[0]?.toUpperCase() || "A"}
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-slate-900 dark:text-white truncate">
+                                  @{ratingDoc.username || "Anonymous"}
+                                </h4>
+                                <p className="text-[10px] text-slate-400 font-medium">
+                                  {ratingDoc.createdAt?.seconds 
+                                    ? new Date(ratingDoc.createdAt.seconds * 1000).toLocaleDateString()
+                                    : "Recent"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-0.5">
+                              {[1, 2, 3, 4, 5].map(s => (
+                                <Star 
+                                  key={s} 
+                                  className={`w-3 h-3 ${
+                                    s <= ratingDoc.rating 
+                                      ? "fill-amber-400 text-amber-400" 
+                                      : "text-slate-200 dark:text-slate-800"
+                                  }`} 
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800 min-h-[80px] flex flex-col">
+                            {ratingDoc.feedback ? (
+                              <p className="text-[11px] text-slate-700 dark:text-slate-300 italic leading-relaxed">
+                                "{ratingDoc.feedback}"
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-slate-400 italic">No comments provided.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            {ratingDoc.deviceInfo || "Web App"}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteRating(ratingDoc.id)}
+                            className="p-2 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-600 dark:text-rose-400 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-
             </motion.div>
           )}
 
@@ -2309,6 +2552,7 @@ export default function AdminDashboard() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
               <AdminLeaderboardTab
                 isDarkMode={isDarkMode}
+                autoSync={autoSync}
                 onAddLog={addLog}
                 onShowToast={showToast}
               />

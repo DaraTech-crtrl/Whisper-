@@ -370,12 +370,12 @@ export async function generateProfileShareCard(options: ProfileShareCardOptions)
       if (blob) {
         resolve({
           blob,
-          dataUrl: canvas.toDataURL("image/png")
+          dataUrl: canvas.toDataURL("image/jpeg", 0.88)
         });
       } else {
         reject(new Error("Failed to generate profile share card blob"));
       }
-    }, "image/png", 1.0);
+    }, "image/jpeg", 0.88);
   });
 }
 
@@ -693,12 +693,12 @@ export async function generateShareImageBlob(options: ShareCardOptions): Promise
       if (blob) {
         resolve({
           blob,
-          dataUrl: canvas.toDataURL("image/png")
+          dataUrl: canvas.toDataURL("image/jpeg", 0.88)
         });
       } else {
         reject(new Error("Failed to generate image blob"));
       }
-    }, "image/png", 1.0);
+    }, "image/jpeg", 0.88);
   });
 }
 

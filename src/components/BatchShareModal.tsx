@@ -44,6 +44,7 @@ export default function BatchShareModal({
   publicUrl
 }: BatchShareModalProps) {
   const [caption, setCaption] = useState("Check out these anonymous whispers people sent me! 👇");
+  const [includeCaption, setIncludeCaption] = useState(true);
   const [selectedTheme, setSelectedTheme] = useState<ProfileCardTheme>("obsidian");
   const [generatedItems, setGeneratedItems] = useState<{ id: string; dataUrl: string; blob: Blob }[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -114,9 +115,13 @@ export default function BatchShareModal({
     };
   }, [isOpen, activeIdsKey, username, publicUrl, selectedTheme]);
 
-  const fullShareText = `${caption}\n\n${publicUrl}`;
+  const fullShareText = includeCaption ? `${caption}\n\n${publicUrl}` : "";
 
   const handleCopyCaption = async () => {
+    if (!includeCaption) {
+      showToast("Caption is disabled. Only images will be shared.");
+      return;
+    }
     try {
       await navigator.clipboard.writeText(fullShareText);
       setCopied(true);
@@ -132,7 +137,7 @@ export default function BatchShareModal({
     triggerHaptic("medium");
     generatedItems.forEach((item, index) => {
       const link = document.createElement("a");
-      link.download = `whisper-batch-${index + 1}.png`;
+      link.download = `whisper-batch-${index + 1}.jpg`;
       link.href = item.dataUrl;
       document.body.appendChild(link);
       link.click();
@@ -148,26 +153,35 @@ export default function BatchShareModal({
 
     try {
       const files = generatedItems.map((item, index) => 
-        new File([item.blob], `whisper-${index + 1}.png`, { type: "image/png" })
+        new File([item.blob], `whisper-${index + 1}.jpg`, { type: "image/jpeg" })
       );
 
-      if (navigator.canShare && navigator.canShare({ files })) {
-        await navigator.share({
-          title: "Whisper Batch Share",
-          text: fullShareText,
-          files: files
-        });
+      const shareData: { title: string; text?: string; files: File[] } = {
+        title: "Whisper Batch Share",
+        files: files
+      };
+
+      if (includeCaption && caption.trim()) {
+        shareData.text = fullShareText;
+      }
+
+      if (navigator.canShare && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
         showToast("Batch shared successfully! 🎉");
       } else {
-        // Fallback: copy caption and download images
-        handleCopyCaption();
+        // Fallback: copy caption (if included) and download images
+        if (includeCaption) {
+          handleCopyCaption();
+        }
         handleDownloadAll();
-        showToast("Files sharing not supported here. Downloaded images & copied caption instead!");
+        showToast("Files sharing not supported here. Downloaded images!");
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
         console.error("Batch share error:", err);
-        handleCopyCaption();
+        if (includeCaption) {
+          handleCopyCaption();
+        }
         handleDownloadAll();
       }
     } finally {
@@ -249,18 +263,41 @@ export default function BatchShareModal({
               </div>
             </div>
 
-            {/* Caption Input */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                Shared Caption for All Images
-              </label>
-              <textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                rows={2}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Write your shared caption..."
-              />
+            {/* Caption Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Shared Caption & Public Link
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeCaption}
+                    onChange={(e) => {
+                      setIncludeCaption(e.target.checked);
+                      triggerHaptic("light");
+                    }}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:bg-slate-950 dark:border-slate-800"
+                  />
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Include caption
+                  </span>
+                </label>
+              </div>
+
+              {includeCaption ? (
+                <textarea
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  rows={2}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 animate-in fade-in"
+                  placeholder="Write your shared caption..."
+                />
+              ) : (
+                <p className="text-xs text-slate-400 dark:text-slate-500 italic">
+                  Caption disabled. Images will share alone without text or public link.
+                </p>
+              )}
             </div>
 
             {/* Generated Cards Preview Carousel / Grid */}

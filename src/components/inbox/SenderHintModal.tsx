@@ -11,10 +11,7 @@ import {
   Check, 
   Info,
   ShieldAlert,
-  Cpu,
-  Eye,
-  EyeOff,
-  ShieldCheck
+  Cpu
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Message } from "../../pages/Dashboard";
@@ -31,7 +28,6 @@ export default function SenderHintModal({
   onClose
 }: SenderHintModalProps) {
   const [copiedIp, setCopiedIp] = useState(false);
-  const [isRevealed, setIsRevealed] = useState(false); // Default for hint is hidden
 
   if (!message) return null;
 
@@ -39,10 +35,6 @@ export default function SenderHintModal({
 
   const handleCopyIp = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isRevealed) {
-      setIsRevealed(true);
-      return;
-    }
     if (!hint.ip) return;
     try {
       await navigator.clipboard.writeText(hint.ip);
@@ -50,11 +42,6 @@ export default function SenderHintModal({
       triggerHaptic("success");
       setTimeout(() => setCopiedIp(false), 2000);
     } catch {}
-  };
-
-  const toggleReveal = () => {
-    triggerHaptic("medium");
-    setIsRevealed(prev => !prev);
   };
 
   return (
@@ -97,44 +84,6 @@ export default function SenderHintModal({
             </button>
           </div>
 
-          {/* Privacy Default Banner with Reveal/Hide Toggle */}
-          <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl flex items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className={`p-1.5 rounded-xl shrink-0 ${isRevealed ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"}`}>
-                {isRevealed ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">
-                  {isRevealed ? "Sender Hint Revealed" : "Hint Hidden by Default"}
-                </p>
-                <p className="text-[10px] text-slate-400 truncate">
-                  {isRevealed ? "Fingerprint values exposed" : "Masked for sender privacy"}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={toggleReveal}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shrink-0 ${
-                isRevealed
-                  ? "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300"
-                  : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
-              }`}
-            >
-              {isRevealed ? (
-                <>
-                  <EyeOff className="w-3 h-3" />
-                  <span>Hide</span>
-                </>
-              ) : (
-                <>
-                  <Eye className="w-3 h-3" />
-                  <span>Reveal</span>
-                </>
-              )}
-            </button>
-          </div>
-
           {/* Hint Info Cards Grid */}
           <div className="space-y-2.5">
             {/* IP Address Card */}
@@ -148,7 +97,7 @@ export default function SenderHintModal({
                     Device IP Address
                   </div>
                   <div className="text-xs sm:text-sm font-mono font-bold text-slate-800 dark:text-slate-200 truncate">
-                    {isRevealed ? (hint.ip || "Unknown IP") : "•••.•••.•••.••• (Hidden)"}
+                    {hint.ip}
                   </div>
                 </div>
               </div>
@@ -156,7 +105,7 @@ export default function SenderHintModal({
                 type="button"
                 onClick={handleCopyIp}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors shrink-0"
-                title={isRevealed ? "Copy IP" : "Reveal to copy IP"}
+                title="Copy IP"
               >
                 {copiedIp ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
@@ -173,7 +122,7 @@ export default function SenderHintModal({
                     Approx. Location
                   </div>
                   <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
-                    {isRevealed ? (hint.location || "Unknown Location") : "•••••••• •••••••• (Hidden)"}
+                    {hint.location || "Unknown Location"}
                   </div>
                 </div>
               </div>
@@ -193,7 +142,7 @@ export default function SenderHintModal({
                     Phone Name & Model
                   </div>
                   <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
-                    {isRevealed ? formatDisplayDevice(hint) : "•••••••• Device (Hidden)"}
+                    {formatDisplayDevice(hint)}
                   </div>
                 </div>
               </div>
@@ -213,10 +162,10 @@ export default function SenderHintModal({
                     Browser & Platform
                   </div>
                   <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
-                    {isRevealed ? (hint.browser || "Unknown Browser") : "•••••• (Hidden)"}
+                    {hint.browser}
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                    OS: {isRevealed ? (hint.os || "Unknown OS") : "••••"}
+                    OS: {hint.os}
                   </div>
                 </div>
               </div>
@@ -232,7 +181,7 @@ export default function SenderHintModal({
                   Screen Res
                 </div>
                 <div className="font-semibold text-slate-700 dark:text-slate-300 font-mono text-[11px] mt-0.5 truncate">
-                  {isRevealed ? (hint.screen || "Unknown") : "•••• × ••••"}
+                  {hint.screen}
                 </div>
               </div>
               <div>
@@ -240,7 +189,7 @@ export default function SenderHintModal({
                   Timezone / Lang
                 </div>
                 <div className="font-semibold text-slate-700 dark:text-slate-300 text-[11px] mt-0.5 truncate">
-                  {isRevealed ? (hint.timezone || "Unknown") : "••••/••••"}
+                  {hint.timezone}
                 </div>
               </div>
             </div>

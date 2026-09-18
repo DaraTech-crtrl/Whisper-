@@ -6,7 +6,7 @@ import { db } from "../lib/firebase";
 import { encryptMessage } from "../lib/crypto";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { captureSenderHint } from "../lib/senderHint";
-import { Send, CheckCircle2, AlertTriangle, Lock, Watch, Clock, RefreshCw } from "lucide-react";
+import { Send, CheckCircle2, AlertTriangle, Lock, Watch, Clock, RefreshCw, Check } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
 import LoadingScreen from "../components/LoadingScreen";
@@ -38,11 +38,97 @@ export default function PublicProfile() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [anonId, setAnonId] = useState<string>("");
-
   const [unlocksAtData, setUnlocksAtData] = useState<string>("");
+
+  // Autosave Draft State
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
+  const [isDraftSaved, setIsDraftSaved] = useState(false);
 
   const BAD_WORDS = ["hate", "kill", "die", "stupid", "idiot", "dumb"];
   const MOODS = ['😎', '🤔', '🥺', '🤣', '🤫', '👀', '❤️', '🔥'];
+
+  // Restore autosaved draft locally
+  useEffect(() => {
+    if (!username) return;
+    const draftKey = `whisper_draft_${username.toLowerCase()}`;
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed.text === "string" && parsed.text.trim()) {
+            setMessage(parsed.text);
+            if (parsed.mood) setMood(parsed.mood);
+            if (parsed.unlocksAtData) setUnlocksAtData(parsed.unlocksAtData);
+            setHasRestoredDraft(true);
+            setIsDraftSaved(true);
+          }
+        } catch {
+          if (saved.trim()) {
+            setMessage(saved);
+            setHasRestoredDraft(true);
+            setIsDraftSaved(true);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Could not read autosaved draft", err);
+    }
+  }, [username]);
+
+  // Persist draft locally on change
+  useEffect(() => {
+    if (!username) return;
+    const draftKey = `whisper_draft_${username.toLowerCase()}`;
+    try {
+      if (message.trim()) {
+        localStorage.setItem(
+          draftKey,
+          JSON.stringify({
+            text: message,
+            mood,
+            unlocksAtData,
+            savedAt: Date.now()
+          })
+        );
+        setIsDraftSaved(true);
+      } else {
+        localStorage.removeItem(draftKey);
+        setIsDraftSaved(false);
+        setHasRestoredDraft(false);
+      }
+    } catch (err) {
+      console.warn("Failed to save draft to localStorage", err);
+    }
+  }, [message, mood, unlocksAtData, username]);
+
+  // Ensure draft is saved if user navigates or closes abruptly
+  useEffect(() => {
+    if (!username) return;
+    const draftKey = `whisper_draft_${username.toLowerCase()}`;
+    const handleSaveBeforeLeave = () => {
+      if (message.trim()) {
+        try {
+          localStorage.setItem(
+            draftKey,
+            JSON.stringify({
+              text: message,
+              mood,
+              unlocksAtData,
+              savedAt: Date.now()
+            })
+          );
+        } catch (e) {}
+      }
+    };
+
+    window.addEventListener("beforeunload", handleSaveBeforeLeave);
+    window.addEventListener("pagehide", handleSaveBeforeLeave);
+    return () => {
+      window.removeEventListener("beforeunload", handleSaveBeforeLeave);
+      window.removeEventListener("pagehide", handleSaveBeforeLeave);
+    };
+  }, [message, mood, unlocksAtData, username]);
 
   useEffect(() => {
     let storedId = localStorage.getItem('anonId');
@@ -135,7 +221,15 @@ export default function PublicProfile() {
 
       setSent(true);
       setMessage("");
+      setMood("");
       setUnlocksAtData("");
+      if (username) {
+        try {
+          localStorage.removeItem(`whisper_draft_${username.toLowerCase()}`);
+        } catch (e) {}
+      }
+      setIsDraftSaved(false);
+      setHasRestoredDraft(false);
     } catch (err: any) {
       setError(getFriendlyErrorMessage(err) || "Failed to send message securely. Please try again.");
     } finally {
@@ -314,17 +408,62 @@ export default function PublicProfile() {
               </div>
             ) : (
             <form onSubmit={handleSend} className="space-y-4">
-              <div className="relative">
-                <textarea
-                  id="message-input"
-                  value={message}
-                  onChange={e => setMessage(e.target.value)}
-                  placeholder={currentMode.placeholder}
-                  className="w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 min-h-[140px] resize-none outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-sans text-base"
-                  maxLength={500}
-                />
-                <div className="absolute bottom-3 right-4 text-xs font-mono text-slate-400">
-                  {message.length}/500
+              {/* Restored Draft Alert Banner */}
+              {hasRestoredDraft && message && (
+                <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/50 text-amber-800 dark:text-amber-300 text-xs">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>Restored saved draft from your previous visit</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMessage("");
+                      setMood("");
+                      setUnlocksAtData("");
+                      if (username) {
+                        try {
+                          localStorage.removeItem(`whisper_draft_${username.toLowerCase()}`);
+                        } catch (e) {}
+                      }
+                      setHasRestoredDraft(false);
+                      setIsDraftSaved(false);
+                    }}
+                    className="text-[11px] font-bold text-amber-700 dark:text-amber-400 hover:underline cursor-pointer shrink-0 ml-2"
+                  >
+                    Discard
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <textarea
+                    id="message-input"
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    placeholder={currentMode.placeholder}
+                    className="w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 min-h-[140px] resize-none outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-sans text-base"
+                    maxLength={500}
+                  />
+                </div>
+
+                {/* Status Bar: Autosave indicator + Character counter */}
+                <div className="flex items-center justify-between px-1 text-xs">
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    {message.trim() && isDraftSaved ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium transition-colors">
+                        <Check className="w-3 h-3" /> Autosaved locally
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 dark:text-slate-500">
+                        Autosaves locally as you type
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-mono text-slate-400 dark:text-slate-500">
+                    {message.length}/500
+                  </div>
                 </div>
               </div>
 

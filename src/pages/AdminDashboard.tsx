@@ -66,8 +66,7 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc,
-  serverTimestamp,
-  onSnapshot
+  serverTimestamp 
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { getAssetUrl } from "../lib/assets";
@@ -201,20 +200,22 @@ export default function AdminDashboard() {
   const [systemLogFilter, setSystemLogFilter] = useState<"all" | "runtime-error" | "unhandledrejection" | "react-boundary" | "pwa-error">("all");
   const [systemLogQuery, setSystemLogQuery] = useState("");
   const [selectedSystemLog, setSelectedSystemLog] = useState<SystemLogRecord | null>(null);
-  const [systemLogsViewMode, setSystemLogsViewMode] = useState<"list" | "cards">(() => {
+
+  // System Error Logs View Mode (List vs Cards)
+  const [systemLogViewMode, setSystemLogViewMode] = useState<"list" | "cards">(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("whisper_admin_system_logs_view_mode");
+      const saved = localStorage.getItem("whisper_admin_system_log_view_mode");
       if (saved === "list" || saved === "cards") return saved;
       if (window.innerWidth < 768) return "cards";
     }
     return "list";
   });
 
-  const handleSetSystemLogsViewMode = (mode: "list" | "cards") => {
-    setSystemLogsViewMode(mode);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("whisper_admin_system_logs_view_mode", mode);
-    }
+  const handleSetSystemLogViewMode = (mode: "list" | "cards") => {
+    setSystemLogViewMode(mode);
+    try {
+      localStorage.setItem("whisper_admin_system_log_view_mode", mode);
+    } catch (e) {}
   };
 
   // System Settings State
@@ -227,7 +228,7 @@ export default function AdminDashboard() {
     allowGoogleAuth: false,
     maxMessageLength: 800000,
     defaultExpiryHours: 24,
-    restrictSenderHints: true, // Default for hint is hidden
+    restrictSenderHints: false,
   });
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -247,33 +248,29 @@ export default function AdminDashboard() {
   const [dbLatency, setDbLatency] = useState<number | null>(null);
   const [isTestingLatency, setIsTestingLatency] = useState(false);
 
-  // Audit Logs (Constant & Persisted)
-  const AUDIT_LOGS_STORAGE_KEY = "whisper_admin_audit_logs_v1";
-
-  const getInitialAuditLogs = (): AuditLog[] => {
+  // Audit Logs - Constant & Persistent Administrative Event Ledger
+  const [logs, setLogs] = useState<AuditLog[]>(() => {
     if (typeof window !== "undefined") {
       try {
-        const saved = localStorage.getItem(AUDIT_LOGS_STORAGE_KEY);
+        const saved = localStorage.getItem("whisper_admin_audit_logs");
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
-          }
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
-      } catch {}
+      } catch (e) {
+        console.warn("Failed to parse saved audit logs", e);
+      }
     }
     return [
       {
-        id: "1",
-        timestamp: new Date().toLocaleTimeString(),
+        id: "init-1",
+        timestamp: new Date().toLocaleString([], { dateStyle: "short", timeStyle: "medium" }),
         action: "Admin Session Authenticated",
-        details: "Constant audit event logger active",
+        details: "Constant administrative event ledger active",
         type: "success"
       }
     ];
-  };
-
-  const [logs, setLogs] = useState<AuditLog[]>(getInitialAuditLogs);
+  });
 
   const showToast = (title: string, message: string, type: ToastNotification["type"] = "success") => {
     const newToast: ToastNotification = { id: Date.now().toString(), title, message, type };
@@ -285,21 +282,57 @@ export default function AdminDashboard() {
 
   const addLog = (action: string, details: string, type: AuditLog["type"] = "info") => {
     const newLog: AuditLog = {
-      id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: new Date().toLocaleTimeString(),
+      id: Date.now().toString(),
+      timestamp: new Date().toLocaleString([], { dateStyle: "short", timeStyle: "medium" }),
       action,
       details,
       type
     };
     setLogs(prev => {
-      const updated = [newLog, ...prev.slice(0, 99)];
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(updated));
-        } catch {}
-      }
+      const updated = [newLog, ...prev.slice(0, 199)];
+      try {
+        localStorage.setItem("whisper_admin_audit_logs", JSON.stringify(updated));
+      } catch (e) {}
       return updated;
     });
+  };
+
+  const handleClearAuditLogs = () => {
+    if (logs.length === 0) return;
+    if (!window.confirm("Are you sure you want to reset the constant audit event log?")) return;
+    const initialLog: AuditLog = {
+      id: Date.now().toString(),
+      timestamp: new Date().toLocaleString([], { dateStyle: "short", timeStyle: "medium" }),
+      action: "Audit Ledger Reset",
+      details: "Admin reset persistent audit event stream",
+      type: "warning"
+    };
+    setLogs([initialLog]);
+    try {
+      localStorage.setItem("whisper_admin_audit_logs", JSON.stringify([initialLog]));
+    } catch (e) {}
+    showToast("Audit Log Reset", "Persistent audit ledger has been reset", "warning");
+  };
+
+  const handleExportAuditLogs = () => {
+    if (logs.length === 0) return;
+    const rows = logs.map(l => [
+      `"${l.id}"`,
+      `"${l.timestamp}"`,
+      `"${l.type}"`,
+      `"${(l.action || '').replace(/"/g, '""')}"`,
+      `"${(l.details || '').replace(/"/g, '""')}"`
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + 
+      ["ID,Timestamp,Type,Action,Details", ...rows.map(r => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `whisper_audit_logs_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Export Complete", `Exported ${logs.length} constant audit event records`, "success");
   };
 
   // Check Passkey
@@ -519,7 +552,7 @@ export default function AdminDashboard() {
           allowGoogleAuth: data.allowGoogleAuth === true,
           maxMessageLength: data.maxMessageLength || 800000,
           defaultExpiryHours: data.defaultExpiryHours || 24,
-          restrictSenderHints: data.restrictSenderHints !== undefined ? !!data.restrictSenderHints : true,
+          restrictSenderHints: !!data.restrictSenderHints,
         });
       }
     } catch (err) {
@@ -775,36 +808,13 @@ export default function AdminDashboard() {
     setTimeout(() => setCopiedUid(null), 2000);
   };
 
-  // Constant Real-time System Logs Listener
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    setIsLoadingSystemLogs(true);
-    const unsub = onSnapshot(collection(db, "system-logs"), (snap) => {
-      const list: SystemLogRecord[] = [];
-      snap.forEach(docSnap => {
-        list.push({ id: docSnap.id, ...docSnap.data() } as SystemLogRecord);
-      });
-      list.sort((a, b) => {
-        const tA = a.timestamp?.seconds ? a.timestamp.seconds * 1000 : (typeof a.timestamp === "number" ? a.timestamp : 0);
-        const tB = b.timestamp?.seconds ? b.timestamp.seconds * 1000 : (typeof b.timestamp === "number" ? b.timestamp : 0);
-        return tB - tA;
-      });
-      setSystemLogsList(list);
-      setIsLoadingSystemLogs(false);
-    }, (err) => {
-      console.warn("Real-time system error logs listener error:", err);
-      setIsLoadingSystemLogs(false);
-    });
-
-    return () => unsub();
-  }, [isAuthenticated]);
-
   // Load Initial Admin Data
   useEffect(() => {
     if (isAuthenticated) {
       fetchUsers();
       fetchSettings();
       fetchRatings();
+      fetchSystemLogs();
       runLatencyTest();
     }
   }, [isAuthenticated]);
@@ -2275,10 +2285,6 @@ export default function AdminDashboard() {
                       <span className="px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-[10px] font-mono font-bold">
                         {systemLogsList.length} captured
                       </span>
-                      <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                        Constant Live Feed
-                      </span>
                     </h2>
                     <p className="text-xs text-slate-400">Automated client-side runtime errors and PWA diagnostics sent to Firestore</p>
                   </div>
@@ -2315,75 +2321,77 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Filters, Search & View Switcher */}
+              {/* Filters, Search & View Mode Toggle */}
               <div className={`p-4 rounded-3xl border flex flex-col md:flex-row items-center justify-between gap-4 ${cardClasses}`}>
-                <div className="relative w-full md:w-72">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  <input
-                    type="text"
-                    value={systemLogQuery}
-                    onChange={(e) => setSystemLogQuery(e.target.value)}
-                    placeholder="Search error message, stack, URL, UID..."
-                    className={`w-full pl-10 pr-4 py-2 border focus:border-indigo-600 rounded-2xl text-xs outline-none transition-all ${
-                      isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
-                    }`}
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-                  {[
-                    { id: "all", label: `All (${systemLogsList.length})` },
-                    { id: "runtime-error", label: `Runtime (${systemLogsList.filter(l => l.type === "runtime-error").length})` },
-                    { id: "unhandledrejection", label: `Rejections (${systemLogsList.filter(l => l.type === "unhandledrejection").length})` },
-                    { id: "react-boundary", label: `React Boundary (${systemLogsList.filter(l => l.type === "react-boundary").length})` },
-                    { id: "pwa-error", label: `PWA/Worker (${systemLogsList.filter(l => l.type === "pwa-error").length})` },
-                  ].map(f => (
-                    <button
-                      key={f.id}
-                      onClick={() => setSystemLogFilter(f.id as any)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                        systemLogFilter === f.id
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                          : "bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
+                <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto flex-1">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      value={systemLogQuery}
+                      onChange={(e) => setSystemLogQuery(e.target.value)}
+                      placeholder="Search error message, stack, URL, UID..."
+                      className={`w-full pl-10 pr-4 py-2 border focus:border-indigo-600 rounded-2xl text-xs outline-none transition-all ${
+                        isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
                       }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-hide">
+                    {[
+                      { id: "all", label: `All (${systemLogsList.length})` },
+                      { id: "runtime-error", label: `Runtime (${systemLogsList.filter(l => l.type === "runtime-error").length})` },
+                      { id: "unhandledrejection", label: `Rejections (${systemLogsList.filter(l => l.type === "unhandledrejection").length})` },
+                      { id: "react-boundary", label: `Boundary (${systemLogsList.filter(l => l.type === "react-boundary").length})` },
+                      { id: "pwa-error", label: `PWA (${systemLogsList.filter(l => l.type === "pwa-error").length})` },
+                    ].map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => setSystemLogFilter(f.id as any)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                          systemLogFilter === f.id
+                            ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                            : "bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* View Mode Switcher: List vs Cards */}
-                <div className="inline-flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-800 shrink-0 self-end md:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => handleSetSystemLogsViewMode("list")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      systemLogsViewMode === "list"
-                        ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                    }`}
-                    title="Table List View"
-                  >
-                    <List className="w-3.5 h-3.5" />
-                    <span>List</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSetSystemLogsViewMode("cards")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      systemLogsViewMode === "cards"
-                        ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                    }`}
-                    title="Card Grid Mode"
-                  >
-                    <LayoutGrid className="w-3.5 h-3.5" />
-                    <span>Cards</span>
-                  </button>
+                {/* View Mode Toggle: List vs Cards */}
+                <div className="flex items-center justify-end shrink-0 w-full md:w-auto">
+                  <div className="inline-flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                    <button
+                      onClick={() => handleSetSystemLogViewMode("list")}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        systemLogViewMode === "list"
+                          ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                      }`}
+                      title="Table List View"
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      <span>List</span>
+                    </button>
+                    <button
+                      onClick={() => handleSetSystemLogViewMode("cards")}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        systemLogViewMode === "cards"
+                          ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                      }`}
+                      title="Card Mode"
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      <span>Cards</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* System Logs Content: Loading, Empty, List View, or Card View */}
+              {/* System Logs Content: Loading, Empty, or Data (List vs Cards) */}
               {isLoadingSystemLogs ? (
                 <div className={`p-12 text-center text-slate-400 space-y-3 rounded-3xl border ${cardClasses}`}>
                   <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
@@ -2395,8 +2403,8 @@ export default function AdminDashboard() {
                   <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No system error logs found</p>
                   <p className="text-xs text-slate-400">Client-side runtime errors and rejections will automatically be logged here.</p>
                 </div>
-              ) : systemLogsViewMode === "list" ? (
-                /* TABLE / LIST VIEW */
+              ) : systemLogViewMode === "list" ? (
+                /* LIST / TABLE VIEW */
                 <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
@@ -2478,92 +2486,85 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               ) : (
-                /* CARD GRID VIEW */
+                /* CARDS GRID VIEW */
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {filteredSystemLogs.map((logItem) => {
-                    let typeBadgeColor = "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300";
-                    let icon = <Bug className="w-3.5 h-3.5 text-rose-500" />;
-                    if (logItem.type === "runtime-error") {
-                      typeBadgeColor = "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800";
-                      icon = <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />;
-                    } else if (logItem.type === "unhandledrejection") {
-                      typeBadgeColor = "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800";
-                      icon = <AlertCircle className="w-3.5 h-3.5 text-amber-500" />;
-                    } else if (logItem.type === "react-boundary") {
-                      typeBadgeColor = "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200/80 dark:border-purple-800";
-                      icon = <Activity className="w-3.5 h-3.5 text-purple-500" />;
-                    } else if (logItem.type === "pwa-error") {
-                      typeBadgeColor = "bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200/80 dark:border-sky-800";
-                      icon = <Radio className="w-3.5 h-3.5 text-sky-500" />;
-                    }
+                    let typeBadgeColor = "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700";
+                    if (logItem.type === "runtime-error") typeBadgeColor = "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border-rose-200/80 dark:border-rose-800";
+                    if (logItem.type === "unhandledrejection") typeBadgeColor = "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200/80 dark:border-amber-800";
+                    if (logItem.type === "react-boundary") typeBadgeColor = "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border-purple-200/80 dark:border-purple-800";
+                    if (logItem.type === "pwa-error") typeBadgeColor = "bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border-sky-200/80 dark:border-sky-800";
 
                     return (
                       <div
                         key={logItem.id}
-                        className={`p-5 rounded-3xl border flex flex-col justify-between gap-4 transition-all duration-150 hover:shadow-md ${cardClasses}`}
+                        className={`p-5 rounded-3xl border flex flex-col justify-between gap-4 transition-all hover:shadow-md ${cardClasses}`}
                       >
                         <div className="space-y-3">
-                          {/* Card Top: Type badge & ID */}
+                          {/* Top row: Type Badge & Timestamp */}
                           <div className="flex items-center justify-between gap-2">
-                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold font-mono inline-flex items-center gap-1.5 ${typeBadgeColor}`}>
-                              {icon}
-                              <span>{logItem.type}</span>
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono tracking-wide border ${typeBadgeColor}`}>
+                              {logItem.type}
                             </span>
-                            <span className="text-[10px] font-mono text-slate-400 truncate max-w-[120px]" title={logItem.id}>
-                              #{logItem.id.slice(-8)}
+                            <span className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
+                              <Clock className="w-3 h-3" />
+                              {logItem.timestamp?.seconds
+                                ? new Date(logItem.timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                                : "Just now"}
                             </span>
                           </div>
 
-                          {/* Error message block */}
-                          <div className="p-3 rounded-2xl bg-rose-50/50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/50">
-                            <p className="font-mono text-xs font-semibold text-rose-700 dark:text-rose-300 line-clamp-3 break-all">
+                          {/* Error Message */}
+                          <div>
+                            <p className="font-semibold text-xs text-slate-900 dark:text-white line-clamp-3 break-words leading-relaxed">
                               {logItem.message}
                             </p>
                           </div>
 
-                          {/* Meta Details */}
-                          <div className="space-y-2 text-xs pt-1">
-                            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                              <span className="font-semibold text-slate-400">User:</span>
-                              <span className="font-mono font-medium text-slate-700 dark:text-slate-300">
-                                @{logItem.username || "anonymous"}
-                              </span>
+                          {/* Stack trace snippet if available */}
+                          {logItem.stack && (
+                            <div className="p-2.5 rounded-2xl bg-slate-950 text-slate-300 font-mono text-[10px] line-clamp-2 overflow-hidden border border-slate-800/80 leading-snug">
+                              {logItem.stack}
                             </div>
+                          )}
+
+                          {/* User & Path context tags */}
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 pt-1">
+                            <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-950 px-2.5 py-1 rounded-xl font-mono text-[10px] border border-slate-200/60 dark:border-slate-800">
+                              <User className="w-3 h-3" />
+                              @{logItem.username || "anonymous"}
+                            </span>
                             {logItem.url && (
-                              <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 gap-2">
-                                <span className="font-semibold text-slate-400 shrink-0">Origin:</span>
-                                <span className="font-mono text-[10px] truncate max-w-[190px] text-slate-600 dark:text-slate-300" title={logItem.url}>
-                                  {logItem.url.replace(/^https?:\/\/[^\/]+/, '') || "/"}
-                                </span>
-                              </div>
-                            )}
-                            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                              <span className="font-semibold text-slate-400">Logged At:</span>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                                {logItem.timestamp?.seconds
-                                  ? new Date(logItem.timestamp.seconds * 1000).toLocaleString()
-                                  : "Just now"}
+                              <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-950 px-2.5 py-1 rounded-xl text-[10px] truncate max-w-[180px] border border-slate-200/60 dark:border-slate-800" title={logItem.url}>
+                                <Globe className="w-3 h-3 shrink-0" />
+                                {logItem.url.replace(/^https?:\/\/[^\/]+/, '') || "/"}
                               </span>
-                            </div>
+                            )}
                           </div>
                         </div>
 
-                        {/* Card Footer Actions */}
-                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800/70 flex items-center justify-between gap-2">
-                          <button
-                            onClick={() => setSelectedSystemLog(logItem)}
-                            className="flex-1 py-2 px-3 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <Terminal className="w-3.5 h-3.5" />
-                            <span>Inspect Diagnostic</span>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteSystemLog(logItem.id)}
-                            className="p-2 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl transition-colors cursor-pointer shrink-0"
-                            title="Delete error log record"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        {/* Footer: ID & Action Buttons */}
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
+                          <span className="font-mono text-[10px] text-slate-400 truncate max-w-[90px]" title={logItem.id}>
+                            {logItem.id}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setSelectedSystemLog(logItem)}
+                              className="px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                              title="Inspect error log details"
+                            >
+                              <Terminal className="w-3.5 h-3.5" />
+                              <span>Inspect</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSystemLog(logItem.id)}
+                              className="p-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-200 dark:hover:border-rose-800"
+                              title="Delete error log"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -3017,43 +3018,80 @@ export default function AdminDashboard() {
             </motion.div>
           )}
 
-          {/* TAB 5: AUDIT LOGS */}
+          {/* TAB 5: AUDIT LOGS (Constant Event Ledger) */}
           {activeTab === "security" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
               
               <div className={`p-6 rounded-3xl border space-y-4 ${cardClasses}`}>
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 gap-3">
                   <div className="flex items-center gap-2.5">
-                    <Shield className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                    <h2 className="font-bold text-base text-slate-900 dark:text-white">Administrative Audit Event Log</h2>
+                    <Shield className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-bold text-base text-slate-900 dark:text-white">Administrative Audit Event Log</h2>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200/80 dark:border-emerald-500/20 font-mono">
+                          Constant Ledger
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400">Chronological persistent stream of security actions and administrative operations</p>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-400">{logs.length} events logged</span>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 mr-1">{logs.length} events logged</span>
+                    <button
+                      onClick={handleExportAuditLogs}
+                      disabled={logs.length === 0}
+                      className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Export audit trail as CSV"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Export CSV</span>
+                    </button>
+                    <button
+                      onClick={handleClearAuditLogs}
+                      disabled={logs.length === 0}
+                      className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800/80 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Reset audit event ledger"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Reset</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  {logs.map((log) => (
-                    <div
-                      key={log.id}
-                      className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
-                        log.type === "success" 
-                          ? "bg-emerald-50/50 dark:bg-emerald-500/10 border-emerald-200/80 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
-                          : log.type === "danger"
-                          ? "bg-rose-50/50 dark:bg-rose-500/10 border-rose-200/80 dark:border-rose-500/20 text-rose-800 dark:text-rose-300"
-                          : log.type === "warning"
-                          ? "bg-amber-50/50 dark:bg-amber-500/10 border-amber-200/80 dark:border-amber-500/20 text-amber-800 dark:text-amber-300"
-                          : "bg-slate-50 dark:bg-slate-950 border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-300"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-[10px] opacity-75 shrink-0">{log.timestamp}</span>
-                        <div>
-                          <div className="font-bold">{log.action}</div>
-                          <div className="text-[11px] opacity-90">{log.details}</div>
+                {logs.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 space-y-2">
+                    <Shield className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No events in audit log</p>
+                    <p className="text-xs text-slate-400">Administrative actions are constantly and permanently recorded here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+                    {logs.map((log) => (
+                      <div
+                        key={log.id}
+                        className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
+                          log.type === "success" 
+                            ? "bg-emerald-50/50 dark:bg-emerald-500/10 border-emerald-200/80 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+                            : log.type === "danger"
+                            ? "bg-rose-50/50 dark:bg-rose-500/10 border-rose-200/80 dark:border-rose-500/20 text-rose-800 dark:text-rose-300"
+                            : log.type === "warning"
+                            ? "bg-amber-50/50 dark:bg-amber-500/10 border-amber-200/80 dark:border-amber-500/20 text-amber-800 dark:text-amber-300"
+                            : "bg-slate-50 dark:bg-slate-950 border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-[10px] opacity-75 shrink-0">{log.timestamp}</span>
+                          <div>
+                            <div className="font-bold">{log.action}</div>
+                            <div className="text-[11px] opacity-90">{log.details}</div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
             </motion.div>

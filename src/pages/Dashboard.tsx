@@ -226,7 +226,7 @@ export default function Dashboard() {
   
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [activeHintMsg, setActiveHintMsg] = useState<Message | null>(null);
-  const [restrictSenderHints, setRestrictSenderHints] = useState(true); // Default for hint is hidden
+  const [restrictSenderHints, setRestrictSenderHints] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [selectedShareMode, setSelectedShareMode] = useState<WhisperMode>(WHISPER_MODES[0]);
@@ -291,10 +291,7 @@ export default function Dashboard() {
     const unsub = onSnapshot(doc(db, "systemSettings", "global"), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        // Default for hint is hidden (true) unless explicitly configured otherwise
-        setRestrictSenderHints(data.restrictSenderHints !== undefined ? !!data.restrictSenderHints : true);
-      } else {
-        setRestrictSenderHints(true);
+        setRestrictSenderHints(!!data.restrictSenderHints);
       }
     }, (err) => {
       console.warn("Could not fetch global settings for hints:", err);

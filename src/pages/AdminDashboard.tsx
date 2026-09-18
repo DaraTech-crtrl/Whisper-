@@ -66,7 +66,8 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc,
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { getAssetUrl } from "../lib/assets";
@@ -200,6 +201,21 @@ export default function AdminDashboard() {
   const [systemLogFilter, setSystemLogFilter] = useState<"all" | "runtime-error" | "unhandledrejection" | "react-boundary" | "pwa-error">("all");
   const [systemLogQuery, setSystemLogQuery] = useState("");
   const [selectedSystemLog, setSelectedSystemLog] = useState<SystemLogRecord | null>(null);
+  const [systemLogsViewMode, setSystemLogsViewMode] = useState<"list" | "cards">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("whisper_admin_system_logs_view_mode");
+      if (saved === "list" || saved === "cards") return saved;
+      if (window.innerWidth < 768) return "cards";
+    }
+    return "list";
+  });
+
+  const handleSetSystemLogsViewMode = (mode: "list" | "cards") => {
+    setSystemLogsViewMode(mode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("whisper_admin_system_logs_view_mode", mode);
+    }
+  };
 
   // System Settings State
   const [settings, setSettings] = useState<SystemSettingsData>({
@@ -211,7 +227,7 @@ export default function AdminDashboard() {
     allowGoogleAuth: false,
     maxMessageLength: 800000,
     defaultExpiryHours: 24,
-    restrictSenderHints: false,
+    restrictSenderHints: true, // Default for hint is hidden
   });
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -231,16 +247,33 @@ export default function AdminDashboard() {
   const [dbLatency, setDbLatency] = useState<number | null>(null);
   const [isTestingLatency, setIsTestingLatency] = useState(false);
 
-  // Audit Logs
-  const [logs, setLogs] = useState<AuditLog[]>([
-    {
-      id: "1",
-      timestamp: new Date().toLocaleTimeString(),
-      action: "Admin Session Authenticated",
-      details: "Passkey verification successful",
-      type: "success"
+  // Audit Logs (Constant & Persisted)
+  const AUDIT_LOGS_STORAGE_KEY = "whisper_admin_audit_logs_v1";
+
+  const getInitialAuditLogs = (): AuditLog[] => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem(AUDIT_LOGS_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch {}
     }
-  ]);
+    return [
+      {
+        id: "1",
+        timestamp: new Date().toLocaleTimeString(),
+        action: "Admin Session Authenticated",
+        details: "Constant audit event logger active",
+        type: "success"
+      }
+    ];
+  };
+
+  const [logs, setLogs] = useState<AuditLog[]>(getInitialAuditLogs);
 
   const showToast = (title: string, message: string, type: ToastNotification["type"] = "success") => {
     const newToast: ToastNotification = { id: Date.now().toString(), title, message, type };
@@ -252,13 +285,21 @@ export default function AdminDashboard() {
 
   const addLog = (action: string, details: string, type: AuditLog["type"] = "info") => {
     const newLog: AuditLog = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       timestamp: new Date().toLocaleTimeString(),
       action,
       details,
       type
     };
-    setLogs(prev => [newLog, ...prev.slice(0, 49)]);
+    setLogs(prev => {
+      const updated = [newLog, ...prev.slice(0, 99)];
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(updated));
+        } catch {}
+      }
+      return updated;
+    });
   };
 
   // Check Passkey
@@ -478,7 +519,7 @@ export default function AdminDashboard() {
           allowGoogleAuth: data.allowGoogleAuth === true,
           maxMessageLength: data.maxMessageLength || 800000,
           defaultExpiryHours: data.defaultExpiryHours || 24,
-          restrictSenderHints: !!data.restrictSenderHints,
+          restrictSenderHints: data.restrictSenderHints !== undefined ? !!data.restrictSenderHints : true,
         });
       }
     } catch (err) {
@@ -734,13 +775,36 @@ export default function AdminDashboard() {
     setTimeout(() => setCopiedUid(null), 2000);
   };
 
+  // Constant Real-time System Logs Listener
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    setIsLoadingSystemLogs(true);
+    const unsub = onSnapshot(collection(db, "system-logs"), (snap) => {
+      const list: SystemLogRecord[] = [];
+      snap.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as SystemLogRecord);
+      });
+      list.sort((a, b) => {
+        const tA = a.timestamp?.seconds ? a.timestamp.seconds * 1000 : (typeof a.timestamp === "number" ? a.timestamp : 0);
+        const tB = b.timestamp?.seconds ? b.timestamp.seconds * 1000 : (typeof b.timestamp === "number" ? b.timestamp : 0);
+        return tB - tA;
+      });
+      setSystemLogsList(list);
+      setIsLoadingSystemLogs(false);
+    }, (err) => {
+      console.warn("Real-time system error logs listener error:", err);
+      setIsLoadingSystemLogs(false);
+    });
+
+    return () => unsub();
+  }, [isAuthenticated]);
+
   // Load Initial Admin Data
   useEffect(() => {
     if (isAuthenticated) {
       fetchUsers();
       fetchSettings();
       fetchRatings();
-      fetchSystemLogs();
       runLatencyTest();
     }
   }, [isAuthenticated]);
@@ -2211,6 +2275,10 @@ export default function AdminDashboard() {
                       <span className="px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 text-[10px] font-mono font-bold">
                         {systemLogsList.length} captured
                       </span>
+                      <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                        Constant Live Feed
+                      </span>
                     </h2>
                     <p className="text-xs text-slate-400">Automated client-side runtime errors and PWA diagnostics sent to Firestore</p>
                   </div>
@@ -2247,9 +2315,9 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Filters & Search */}
-              <div className={`p-4 rounded-3xl border flex flex-col sm:flex-row items-center justify-between gap-4 ${cardClasses}`}>
-                <div className="relative w-full sm:w-80">
+              {/* Filters, Search & View Switcher */}
+              <div className={`p-4 rounded-3xl border flex flex-col md:flex-row items-center justify-between gap-4 ${cardClasses}`}>
+                <div className="relative w-full md:w-72">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                   <input
                     type="text"
@@ -2262,7 +2330,7 @@ export default function AdminDashboard() {
                   />
                 </div>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
                   {[
                     { id: "all", label: `All (${systemLogsList.length})` },
                     { id: "runtime-error", label: `Runtime (${systemLogsList.filter(l => l.type === "runtime-error").length})` },
@@ -2283,22 +2351,53 @@ export default function AdminDashboard() {
                     </button>
                   ))}
                 </div>
+
+                {/* View Mode Switcher: List vs Cards */}
+                <div className="inline-flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-800 shrink-0 self-end md:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => handleSetSystemLogsViewMode("list")}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      systemLogsViewMode === "list"
+                        ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                    title="Table List View"
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    <span>List</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetSystemLogsViewMode("cards")}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      systemLogsViewMode === "cards"
+                        ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                    title="Card Grid Mode"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Cards</span>
+                  </button>
+                </div>
               </div>
 
-              {/* System Logs Table */}
-              <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
-                {isLoadingSystemLogs ? (
-                  <div className="p-12 text-center text-slate-400 space-y-3">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
-                    <p className="text-xs">Reading system logs from Firestore...</p>
-                  </div>
-                ) : filteredSystemLogs.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400 space-y-2">
-                    <Bug className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No system error logs found</p>
-                    <p className="text-xs text-slate-400">Client-side runtime errors and rejections will automatically be logged here.</p>
-                  </div>
-                ) : (
+              {/* System Logs Content: Loading, Empty, List View, or Card View */}
+              {isLoadingSystemLogs ? (
+                <div className={`p-12 text-center text-slate-400 space-y-3 rounded-3xl border ${cardClasses}`}>
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-600" />
+                  <p className="text-xs">Reading system logs from Firestore...</p>
+                </div>
+              ) : filteredSystemLogs.length === 0 ? (
+                <div className={`p-12 text-center text-slate-400 space-y-2 rounded-3xl border ${cardClasses}`}>
+                  <Bug className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No system error logs found</p>
+                  <p className="text-xs text-slate-400">Client-side runtime errors and rejections will automatically be logged here.</p>
+                </div>
+              ) : systemLogsViewMode === "list" ? (
+                /* TABLE / LIST VIEW */
+                <div className={`rounded-3xl border overflow-hidden ${cardClasses}`}>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
@@ -2377,8 +2476,100 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                /* CARD GRID VIEW */
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {filteredSystemLogs.map((logItem) => {
+                    let typeBadgeColor = "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300";
+                    let icon = <Bug className="w-3.5 h-3.5 text-rose-500" />;
+                    if (logItem.type === "runtime-error") {
+                      typeBadgeColor = "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800";
+                      icon = <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />;
+                    } else if (logItem.type === "unhandledrejection") {
+                      typeBadgeColor = "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800";
+                      icon = <AlertCircle className="w-3.5 h-3.5 text-amber-500" />;
+                    } else if (logItem.type === "react-boundary") {
+                      typeBadgeColor = "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200/80 dark:border-purple-800";
+                      icon = <Activity className="w-3.5 h-3.5 text-purple-500" />;
+                    } else if (logItem.type === "pwa-error") {
+                      typeBadgeColor = "bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200/80 dark:border-sky-800";
+                      icon = <Radio className="w-3.5 h-3.5 text-sky-500" />;
+                    }
+
+                    return (
+                      <div
+                        key={logItem.id}
+                        className={`p-5 rounded-3xl border flex flex-col justify-between gap-4 transition-all duration-150 hover:shadow-md ${cardClasses}`}
+                      >
+                        <div className="space-y-3">
+                          {/* Card Top: Type badge & ID */}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold font-mono inline-flex items-center gap-1.5 ${typeBadgeColor}`}>
+                              {icon}
+                              <span>{logItem.type}</span>
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-400 truncate max-w-[120px]" title={logItem.id}>
+                              #{logItem.id.slice(-8)}
+                            </span>
+                          </div>
+
+                          {/* Error message block */}
+                          <div className="p-3 rounded-2xl bg-rose-50/50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/50">
+                            <p className="font-mono text-xs font-semibold text-rose-700 dark:text-rose-300 line-clamp-3 break-all">
+                              {logItem.message}
+                            </p>
+                          </div>
+
+                          {/* Meta Details */}
+                          <div className="space-y-2 text-xs pt-1">
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                              <span className="font-semibold text-slate-400">User:</span>
+                              <span className="font-mono font-medium text-slate-700 dark:text-slate-300">
+                                @{logItem.username || "anonymous"}
+                              </span>
+                            </div>
+                            {logItem.url && (
+                              <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 gap-2">
+                                <span className="font-semibold text-slate-400 shrink-0">Origin:</span>
+                                <span className="font-mono text-[10px] truncate max-w-[190px] text-slate-600 dark:text-slate-300" title={logItem.url}>
+                                  {logItem.url.replace(/^https?:\/\/[^\/]+/, '') || "/"}
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                              <span className="font-semibold text-slate-400">Logged At:</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                {logItem.timestamp?.seconds
+                                  ? new Date(logItem.timestamp.seconds * 1000).toLocaleString()
+                                  : "Just now"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card Footer Actions */}
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800/70 flex items-center justify-between gap-2">
+                          <button
+                            onClick={() => setSelectedSystemLog(logItem)}
+                            className="flex-1 py-2 px-3 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Terminal className="w-3.5 h-3.5" />
+                            <span>Inspect Diagnostic</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSystemLog(logItem.id)}
+                            className="p-2 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl transition-colors cursor-pointer shrink-0"
+                            title="Delete error log record"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
             </motion.div>
           )}

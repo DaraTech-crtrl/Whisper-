@@ -19,7 +19,7 @@ import {
   Star
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { collection, getDocs, getCountFromServer } from "firebase/firestore";
+import { collection, getDocs, getCountFromServer, query, limit } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { ADMIN_TOP_10_BADGES, AdminLeaderboardBadge, getAdminTop10Badge } from "../../lib/leaderboardBadges";
 import UserAvatar from "../UserAvatar";
@@ -81,9 +81,22 @@ export default function AdminLeaderboardTab({
 
         // Priority 2: Accurate server-side aggregation count from subcollection
         try {
-          const countSnap = await getCountFromServer(collection(db, "users", uid, "messages"));
+          const msgCol = collection(db, "users", uid, "messages");
+          const countSnap = await getCountFromServer(msgCol);
           const serverCount = countSnap.data().count;
-          count = Math.max(count, serverCount);
+          
+          if (serverCount > 0) {
+            count = Math.max(count, serverCount);
+          } else {
+            // If server count says 0, double check with a small limit query to see if it's a permission/sync issue
+            const sampleSnap = await getDocs(query(msgCol, limit(1)));
+            if (!sampleSnap.empty) {
+              // If at least one exists, we might need to fetch all to be sure, 
+              // but for performance, we'll just fetch the full collection size if it's small or use the snapshot size
+              const fullSnap = await getDocs(msgCol);
+              count = Math.max(count, fullSnap.size);
+            }
+          }
         } catch (countErr) {
           // If server aggregation fails, fetch collection documents directly as ultimate fallback
           try {
@@ -480,7 +493,7 @@ export default function AdminLeaderboardTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
-                {filteredUsers.map((u) => (
+                {filteredUsers.slice(selectedRankFilter === "all" && !searchQuery ? 3 : 0).map((u) => (
                   <tr key={u.uid} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="py-3 px-3">
                       <span className={cn(
@@ -557,7 +570,7 @@ export default function AdminLeaderboardTab({
         ) : (
           /* Cards Grid View */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            {filteredUsers.map((u) => (
+            {filteredUsers.slice(selectedRankFilter === "all" && !searchQuery ? 3 : 0).map((u) => (
               <div
                 key={u.uid}
                 className={cn(

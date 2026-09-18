@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, Timestamp, updateDoc, increment } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { encryptMessage } from "../lib/crypto";
 import { getFriendlyErrorMessage } from "../lib/errorHandler";
@@ -203,6 +203,17 @@ export default function PublicProfile() {
       }
       
       await addDoc(collection(db, "users", profile.uid, "messages"), payloadData);
+
+      // Increment the message counter on the user document for faster leaderboard tracking
+      try {
+        await updateDoc(doc(db, "users", profile.uid), {
+          messageCount: increment(1),
+          receivedMessagesCount: increment(1), // Supporting both common field names
+          updatedAt: serverTimestamp()
+        });
+      } catch (updateErr) {
+        console.warn("Could not increment user message counter:", updateErr);
+      }
 
       // Trigger Real Background Push Notification (delivers even if app is closed or locked)
       fetch("/api/notify-whisper", {

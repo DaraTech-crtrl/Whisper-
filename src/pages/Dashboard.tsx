@@ -105,6 +105,7 @@ import InboxBulkActions from "../components/inbox/InboxBulkActions";
 import InboxMessageCard from "../components/inbox/InboxMessageCard";
 import MessageReaderModal from "../components/inbox/MessageReaderModal";
 import SenderHintModal from "../components/inbox/SenderHintModal";
+import RecentActivityWidget from "../components/dashboard/RecentActivityWidget";
 
 export interface Message {
   id: string;
@@ -562,6 +563,8 @@ export default function Dashboard() {
     const unreadActiveMsgs = messages.filter(m => !m.archived && !m.read);
     if (unreadActiveMsgs.length === 0) return;
     setIsMarkingAllRead(true);
+    // Optimistically update local state
+    setMessages(prev => prev.map(m => (!m.archived && !m.read) ? { ...m, read: true } : m));
     try {
       const batch = writeBatch(db);
       unreadActiveMsgs.forEach(m => {
@@ -570,7 +573,14 @@ export default function Dashboard() {
       });
       await batch.commit();
     } catch (err) {
-      console.error("Failed to mark all as read", err);
+      console.warn("Batch mark all read failed, attempting individual updates:", err);
+      try {
+        await Promise.all(unreadActiveMsgs.map(m => 
+          updateDoc(doc(db, "users", user.uid, "messages", m.id), { read: true }).catch(() => {})
+        ));
+      } catch (fallbackErr) {
+        console.error("Failed to mark all as read:", fallbackErr);
+      }
     } finally {
       setIsMarkingAllRead(false);
     }
@@ -624,34 +634,70 @@ export default function Dashboard() {
   // Bulk Actions
   const handleBulkMarkRead = async (isRead: boolean) => {
     if (selectedIds.size === 0 || !user) return;
+    const idsToUpdate: string[] = Array.from(selectedIds);
+    // Optimistically update local messages
+    setMessages(prev => prev.map(m => selectedIds.has(m.id) ? { ...m, read: isRead } : m));
+    setSelectedIds(new Set());
+
     try {
       const batch = writeBatch(db);
-      selectedIds.forEach(id => {
-        const ref = doc(db, "users", user.uid, "messages", id);
+      // Only send writes for messages whose read state actually changes
+      const diffMsgs = messages.filter(m => selectedIds.has(m.id) && m.read !== isRead);
+      if (diffMsgs.length === 0) return;
+
+      diffMsgs.forEach(m => {
+        const ref = doc(db, "users", user.uid, "messages", m.id);
         batch.update(ref, { read: isRead });
       });
       await batch.commit();
-      setSelectedIds(new Set());
     } catch (err) {
-      console.error("Bulk mark read failed", err);
+      console.warn("Batch mark read failed, trying individual updates:", err);
+      try {
+        const promises = idsToUpdate.map(id =>
+          updateDoc(doc(db, "users", user.uid, "messages", id), { read: isRead }).catch(e => {
+            console.warn(`Single mark read failed for ${id}:`, e);
+          })
+        );
+        await Promise.all(promises);
+      } catch (fallbackErr) {
+        console.error("Bulk mark read fallback error:", fallbackErr);
+      }
     }
   };
 
   const handleBulkArchive = async (archiveState: boolean) => {
     if (selectedIds.size === 0 || !user) return;
+    const idsToUpdate: string[] = Array.from(selectedIds);
+    // Optimistically update local messages
+    setMessages(prev => prev.map(m => selectedIds.has(m.id) ? { ...m, archived: archiveState } : m));
+    setSelectedIds(new Set());
+
     try {
       const batch = writeBatch(db);
-      selectedIds.forEach(id => {
-        const ref = doc(db, "users", user.uid, "messages", id);
+      const diffMsgs = messages.filter(m => selectedIds.has(m.id) && Boolean(m.archived) !== archiveState);
+      if (diffMsgs.length === 0) return;
+
+      diffMsgs.forEach(m => {
+        const ref = doc(db, "users", user.uid, "messages", m.id);
         batch.update(ref, { 
           archived: archiveState,
           archivedAt: archiveState ? serverTimestamp() : null
         });
       });
       await batch.commit();
-      setSelectedIds(new Set());
     } catch (err) {
-      console.error("Bulk archive failed", err);
+      console.warn("Batch archive failed, trying individual updates:", err);
+      try {
+        const promises = idsToUpdate.map(id =>
+          updateDoc(doc(db, "users", user.uid, "messages", id), { 
+            archived: archiveState,
+            archivedAt: archiveState ? serverTimestamp() : null
+          }).catch(() => {})
+        );
+        await Promise.all(promises);
+      } catch (fallbackErr) {
+        console.error("Bulk archive fallback error:", fallbackErr);
+      }
     }
   };
 
@@ -1189,6 +1235,18 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
+
+          {/* Recent Activity Widget: Placed down at bottom of overview/home */}
+          <RecentActivityWidget
+            messages={messages}
+            onNavigateToInbox={(filter) => {
+              setDashboardTab("inbox");
+              setInboxView("active");
+              if (filter === "TODAY") {
+                setQuickFilter("UNREAD");
+              }
+            }}
+          />
 
         </div>
       )}

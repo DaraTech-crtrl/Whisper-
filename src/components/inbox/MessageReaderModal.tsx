@@ -19,7 +19,8 @@ import {
   ShieldCheck,
   AlertTriangle,
   MoreVertical,
-  Palette
+  Palette,
+  BookOpen
 } from "lucide-react";
 import { motion, AnimatePresence, PanInfo } from "motion/react";
 import { cn } from "../../lib/utils";
@@ -29,6 +30,7 @@ import { getMessageMode, WhisperMode } from "../../lib/whisperModes";
 import { ProfileCardTheme } from "../../lib/canvasImage";
 import FormattedMessageText from "../FormattedMessageText";
 import { triggerHaptic } from "../../lib/haptics";
+import { getReadTimeEstimate } from "../../lib/readTime";
 
 const THEME_OPTIONS: { id: ProfileCardTheme; name: string; color: string; border: string; glow: string }[] = [
   { id: "obsidian", name: "Obsidian", color: "bg-slate-900", border: "border-purple-500", glow: "from-purple-600/30 via-indigo-600/20 to-transparent" },
@@ -139,6 +141,11 @@ export default function MessageReaderModal({
   const timeString = message.createdAt?.seconds 
     ? formatDistanceToNow(new Date(message.createdAt.seconds * 1000), { addSuffix: true })
     : "Just now";
+
+  const readTime = getReadTimeEstimate(
+    decryptedText,
+    message.encryptedContent ? Math.max(40, Math.round(message.encryptedContent.length * 0.35)) : undefined
+  );
 
   const currentThemeConfig = THEME_OPTIONS.find(t => t.id === selectedTheme) || THEME_OPTIONS[0];
 
@@ -392,9 +399,16 @@ export default function MessageReaderModal({
                     </span>
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-indigo-400" />
-                    <span>{timeString}</span>
+                  <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 flex-wrap">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-indigo-400" />
+                      <span>{timeString}</span>
+                    </span>
+                    <span className="inline-block w-1 h-1 rounded-full bg-slate-600" />
+                    <span className="flex items-center gap-1 text-indigo-300">
+                      <BookOpen className="w-3 h-3" />
+                      <span>{readTime.label}</span>
+                    </span>
                   </span>
                 </div>
               </div>
@@ -438,6 +452,12 @@ export default function MessageReaderModal({
               <div className="flex items-center gap-1.5 tracking-wide uppercase">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Encrypted</span>
+              </div>
+
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/70 text-[10px]" title={`${readTime.charCount} characters, ~${readTime.wordCount} words`}>
+                <BookOpen className="w-2.5 h-2.5 text-indigo-400" />
+                <span>{readTime.label}</span>
+                {readTime.charCount > 0 && <span className="opacity-60 font-mono">({readTime.charCount}c)</span>}
               </div>
 
               <div className="flex items-center gap-1 text-white/50 text-[10px]">

@@ -157,6 +157,7 @@ export default function App() {
           <Route path="/" element={<Welcome />} />
           <Route path="/auth" element={<Home />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/leaderboard" element={<Navigate to="/dashboard" replace />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/u/:username" element={<PublicProfile />} />
           <Route path="/confess/:username" element={<PublicProfile />} />

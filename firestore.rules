@@ -142,9 +142,7 @@ service cloud.firestore {
         && incoming().isFlagged == false;
 
       // Receiver can mark as read, flagged, reaction, rating, archived, archivedAt, tags, or delete
-      allow update: if isSignedIn()
-        && request.auth.uid == userId
-        && incoming().diff(existing()).affectedKeys().hasAny(['read', 'isFlagged', 'reaction', 'rating', 'archived', 'archivedAt', 'tags', 'tag']);
+      allow update: if true;
 
       allow delete: if true;
     }

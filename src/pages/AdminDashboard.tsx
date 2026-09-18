@@ -56,7 +56,9 @@ import {
   Bug,
   FileText,
   LayoutGrid,
-  List
+  List,
+  Trophy,
+  Award
 } from "lucide-react";
 import { 
   collection, 
@@ -75,6 +77,7 @@ import UserAvatar from "../components/UserAvatar";
 import { usePWAUpdate } from "../lib/usePWAUpdate";
 import { usePWAInstall } from "../lib/usePWAInstall";
 import AppUpdateBanner from "../components/AppUpdateBanner";
+import AdminLeaderboardTab from "../components/admin/AdminLeaderboardTab";
 
 const ADMIN_PASSKEY = "Akin$sola@2020";
 const SESSION_STORAGE_KEY = "whisper_admin_authenticated";
@@ -166,7 +169,7 @@ export default function AdminDashboard() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Tab Navigation State
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "ratings" | "system-logs" | "settings" | "updates" | "security">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "ratings" | "leaderboard" | "system-logs" | "settings" | "updates" | "security">("overview");
 
   // User Management State
   const [usersList, setUsersList] = useState<UserProfileData[]>([]);
@@ -1007,6 +1010,7 @@ export default function AdminDashboard() {
   const navigationItems = [
     { id: "overview", label: "Dashboard Overview", icon: BarChart3, badge: null },
     { id: "users", label: "User Directory", icon: Users, badge: totalUsersCount },
+    { id: "leaderboard", label: "Leaderboard & Badges", icon: Trophy, badge: "Top 10" },
     { id: "ratings", label: "Ratings & Feedback", icon: Star, badge: ratingsList.length },
     { id: "system-logs", label: "System Error Logs", icon: Bug, badge: systemLogsList.length > 0 ? systemLogsList.length : null },
     { id: "settings", label: "System Controls", icon: Sliders, badge: settings.maintenanceMode ? "MAINT" : null },
@@ -1432,6 +1436,37 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+              </div>
+
+              {/* Leaderboard & Total Msgs Analytics Quick Gateway */}
+              <div className={`p-6 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${cardClasses}`}>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-500/20 shrink-0 text-2xl shadow-sm">
+                    🏆
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                        Total Messages Analytics & Top 10 Badges
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        Admin Exclusive
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Explore user rankings by total whispers received and view the 10 unique admin-only honor badges.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("leaderboard")}
+                  className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs rounded-2xl flex items-center gap-2 shadow-md shadow-amber-500/20 transition-all cursor-pointer shrink-0"
+                >
+                  <Trophy className="w-4 h-4" />
+                  <span>View Leaderboard & Badges</span>
+                </button>
               </div>
 
               {/* Engine Status & Maintenance Quick Switch */}
@@ -2266,6 +2301,17 @@ export default function AdminDashboard() {
                 )}
               </div>
 
+            </motion.div>
+          )}
+
+          {/* TAB: LEADERBOARD & ADMIN TOP 10 BADGES */}
+          {activeTab === "leaderboard" && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              <AdminLeaderboardTab
+                isDarkMode={isDarkMode}
+                onAddLog={addLog}
+                onShowToast={showToast}
+              />
             </motion.div>
           )}
 

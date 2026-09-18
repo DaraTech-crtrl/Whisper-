@@ -14,7 +14,8 @@ import {
   ChevronRight, 
   Sparkles, 
   Eye,
-  Smile
+  Smile,
+  BookOpen
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../../lib/utils";
@@ -24,6 +25,7 @@ import { getMessageMode, WhisperMode } from "../../lib/whisperModes";
 import { extractUrls } from "../../lib/linkPreview";
 import LinkPreviewCard from "../LinkPreviewCard";
 import { triggerHaptic } from "../../lib/haptics";
+import { getReadTimeEstimate } from "../../lib/readTime";
 
 const QUICK_REACTIONS = ["❤️", "🔥", "😂", "😲", "🥺", "🙏"];
 
@@ -70,6 +72,11 @@ export default function InboxMessageCard({
   const timeString = msg.createdAt?.seconds 
     ? formatDistanceToNow(new Date(msg.createdAt.seconds * 1000), { addSuffix: true }) 
     : "Just now";
+
+  const readTime = getReadTimeEstimate(
+    decryptedText,
+    msg.encryptedContent ? Math.max(40, Math.round(msg.encryptedContent.length * 0.35)) : undefined
+  );
 
   const handleCopyText = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -139,6 +146,13 @@ export default function InboxMessageCard({
               )}
               <span className="text-[11px] text-slate-400 font-mono">
                 {timeString}
+              </span>
+              <span 
+                className="text-[10px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded-md flex items-center gap-1 border border-slate-200/60 dark:border-slate-700/60"
+                title={`Estimated read time (${readTime.charCount} characters)`}
+              >
+                <BookOpen className="w-2.5 h-2.5 text-indigo-500 shrink-0" />
+                <span>{readTime.label}</span>
               </span>
               {isArchived && typeof archiveDaysRemaining === "number" && (
                 <span className="text-[10px] font-mono text-amber-500">
@@ -300,6 +314,14 @@ export default function InboxMessageCard({
               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium flex-wrap">
                 <span>{timeString}</span>
                 <span className="inline-block w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
+                <span 
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-white/70 dark:bg-slate-800/70 px-2 py-0.5 rounded-full border border-slate-200/60 dark:border-slate-700/60"
+                  title="Estimated read time"
+                >
+                  <BookOpen className="w-3 h-3 text-indigo-500 shrink-0" />
+                  <span>{readTime.label}</span>
+                </span>
+                <span className="inline-block w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
                 <span className="text-indigo-600 dark:text-indigo-400 font-bold group-hover:underline flex items-center gap-1">
                   <Eye className="w-3 h-3" />
                   <span>Tap to decrypt & reveal</span>
@@ -375,6 +397,15 @@ export default function InboxMessageCard({
 
           <span className="text-xs font-medium text-slate-400 font-mono">
             {timeString}
+          </span>
+
+          <span 
+            className="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-full flex items-center gap-1 border border-slate-200/60 dark:border-slate-700/60 font-mono"
+            title={`Estimated read time based on ${readTime.charCount} characters`}
+          >
+            <BookOpen className="w-3 h-3 text-indigo-500 shrink-0" />
+            <span>{readTime.label}</span>
+            {readTime.charCount > 0 && <span className="opacity-60 text-[10px]">({readTime.charCount} chars)</span>}
           </span>
 
           {isArchived && typeof archiveDaysRemaining === "number" && (

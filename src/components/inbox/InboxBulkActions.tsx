@@ -8,7 +8,8 @@ import {
   X, 
   Download, 
   CheckSquare, 
-  AlertTriangle 
+  AlertTriangle,
+  Share2 
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { triggerHaptic } from "../../lib/haptics";
@@ -22,6 +23,7 @@ interface InboxBulkActionsProps {
   onDelete: () => Promise<void>;
   onClearSelection: () => void;
   onExportSelected?: () => void;
+  onBatchShare?: () => void;
 }
 
 export default function InboxBulkActions({
@@ -31,7 +33,8 @@ export default function InboxBulkActions({
   onArchive,
   onDelete,
   onClearSelection,
-  onExportSelected
+  onExportSelected,
+  onBatchShare
 }: InboxBulkActionsProps) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -56,19 +59,34 @@ export default function InboxBulkActions({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 40, scale: 0.95 }}
         transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-        className="fixed bottom-6 inset-x-4 max-w-lg mx-auto z-40 bg-slate-950/95 text-white backdrop-blur-2xl border border-indigo-500/30 rounded-3xl p-3 shadow-2xl shadow-indigo-950/60"
+        className="fixed bottom-6 inset-x-3 max-w-xl mx-auto z-40 bg-slate-950/95 text-white backdrop-blur-2xl border border-indigo-500/30 rounded-3xl p-3 shadow-2xl shadow-indigo-950/60"
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
           {/* Left: Selected count pill */}
-          <div className="flex items-center gap-2 pl-2">
-            <span className="bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 text-xs font-bold px-3 py-1 rounded-full font-mono flex items-center gap-1.5">
+          <div className="flex items-center gap-2 pl-1">
+            <span className="bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 text-xs font-bold px-3 py-1.5 rounded-full font-mono flex items-center gap-1.5">
               <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
               <span>{selectedCount} selected</span>
             </span>
           </div>
 
           {/* Center/Right: Action Buttons */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 ml-auto">
+            {/* Batch Share */}
+            {onBatchShare && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("medium");
+                  onBatchShare();
+                }}
+                className="p-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white transition-all shadow-sm shadow-indigo-600/30"
+                title={`Batch Share Selected Images (${selectedCount})`}
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+            )}
+
             {/* Mark as Read */}
             <button
               type="button"

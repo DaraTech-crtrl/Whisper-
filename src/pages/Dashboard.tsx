@@ -72,6 +72,7 @@ import { getFriendlyErrorMessage } from "../lib/errorHandler";
 import { generateShareImageBlob, ProfileCardTheme } from "../lib/canvasImage";
 import EmptyState from "../components/EmptyState";
 import ShareCardModal from "../components/ShareCardModal";
+import BatchShareModal from "../components/BatchShareModal";
 import IOSInstallGuideModal from "../components/IOSInstallGuideModal";
 import PauseLinkModal from "../components/PauseLinkModal";
 import AccountSettingsModal from "../components/AccountSettingsModal";
@@ -230,6 +231,7 @@ export default function Dashboard() {
   const [restrictSenderHints, setRestrictSenderHints] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showBatchShareModal, setShowBatchShareModal] = useState(false);
   const [selectedShareMode, setSelectedShareMode] = useState<WhisperMode>(WHISPER_MODES[0]);
   const [selectedShareUrl, setSelectedShareUrl] = useState<string>("");
   const [activeFeaturedModeId, setActiveFeaturedModeId] = useState<string>("anonymous");
@@ -903,8 +905,10 @@ export default function Dashboard() {
         link.href = dataUrl;
         link.click();
       }
-    } catch (err) {
-      console.error("Failed to share image", err);
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        console.error("Failed to share image", err);
+      }
     } finally {
       setIsExporting(false);
     }
@@ -1297,6 +1301,7 @@ export default function Dashboard() {
             onArchive={handleBulkArchive}
             onDelete={handleBulkDelete}
             onClearSelection={() => setSelectedIds(new Set())}
+            onBatchShare={() => setShowBatchShareModal(true)}
           />
 
           {/* Empty State or Message List */}
@@ -1435,6 +1440,16 @@ export default function Dashboard() {
           setModeCustomPrompts(prev => ({ ...prev, [modeId]: newPrompt }));
           setSelectedShareUrl(newUrl);
         }}
+      />
+
+      {/* Batch Share Modal */}
+      <BatchShareModal
+        isOpen={showBatchShareModal}
+        onClose={() => setShowBatchShareModal(false)}
+        selectedMessages={sortedMessages.filter(m => selectedIds.has(m.id))}
+        decryptedCache={decryptedCache}
+        username={dbUser.username}
+        publicUrl={publicUrl}
       />
 
       {/* iOS PWA Installation & Push Notification Modal */}

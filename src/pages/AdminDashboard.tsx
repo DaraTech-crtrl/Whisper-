@@ -930,7 +930,6 @@ export default function AdminDashboard() {
           setRatingsList(ratings);
 
           fetchSettings();
-          fetchSystemLogs();
           setLastSyncTime(new Date());
         } catch (err) {
           console.warn("Silent background sync failed:", err);
